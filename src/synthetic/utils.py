@@ -40,7 +40,7 @@ class ExperimentConfig:
 
     object_alpha: float = 0.1
     object_step_size: float = 1.0
-    probe_alpha: float = 1.0
+    probe_alpha: float = 0.1
     probe_step_size: float = 1.0
 
     probe_init_phase_noise_rad: float = 0.05

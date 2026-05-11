@@ -467,11 +467,15 @@ class GeometricMAGPIEReconstructor(AnalyticalIterativePtychographyReconstructor)
             return None
 
         eps = 1e-12
-        if abs(float(probe.options.alpha) - 1.0) > 1e-12:
+        alpha_p = float(probe.options.alpha)
+        uses_shifted_probe_frame = (
+            not self.assume_no_subpixel_shifts
+            and self.forward_model.apply_subpixel_shifts_on_probe
+        )
+        if uses_shifted_probe_frame and abs(alpha_p - 1.0) > 1e-12:
             raise ValueError(
-                "The simplified MAGPIE probe update assumes "
-                "probe_alpha == 1.0. Use the shifted weighted solve if you "
-                "want spatially varying probe weights."
+                "Shifted-probe MAGPIE currently requires probe_alpha == 1.0. "
+                "Synthetic integer-shift tests can use probe_alpha < 1.0."
             )
 
         obj_patch_batch = obj_patches[:, 0, ...]
@@ -479,8 +483,9 @@ class GeometricMAGPIEReconstructor(AnalyticalIterativePtychographyReconstructor)
         probe_old = probe.data[0, mode_slicer]
 
         z_power = (torch.abs(obj_patch_batch) ** 2)[:, None, ...].real
-        probe_weight = z_power.amax(dim=(-2, -1), keepdim=True)
-        u_z = (probe_weight - z_power).clamp_min(0)
+        z_max = z_power.amax(dim=(-2, -1), keepdim=True)
+        u_z = alpha_p * (z_max - z_power).clamp_min(0)
+        probe_weight = z_power + u_z
 
         probe_plus_shift = (
             obj_patch_batch[:, None, ...].conj() * psi_prime

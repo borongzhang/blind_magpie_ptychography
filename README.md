@@ -26,8 +26,6 @@ fresh checkout.
 
 - `examples/synthetic/magpie_synthetic.ipynb` compares rPIE and geometric
   MAGPIE on synthetic data with known ground truth.
-- `examples/synthetic/geometric_mean_test.ipynb` checks the aligned complex
-  geometric mean used by MAGPIE.
 - `examples/chip/magpie_real_chip.ipynb` compares rPIE and geometric MAGPIE on
   the chip dataset.
 
