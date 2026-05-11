@@ -4,16 +4,16 @@ from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Mapping, Optional
 
-import h5py
-import numpy as np
-import torch
-
 from common import PROJECT_ROOT, patch_ptychi_compatibility
 from common import (
     attach_residual_printer,
     configure_ptychi_device,
     set_random_seed,
 )
+
+import h5py
+import numpy as np
+import torch
 
 import matplotlib.pyplot as plt
 import ptychi.api as api
@@ -345,22 +345,22 @@ def run_real_rpie(
     )
 
 
-def run_real_geometric_magpie(
+def run_real_blind_magpie(
     dataset: RealPtychographyDataset,
     cfg: RealDataConfig,
     device: api.Devices,
     multigrid_levels: Optional[int] = None,
     seed: Optional[int] = None,
 ) -> RealReconstructionResult:
-    from algorithms.geometric_magpie import GeometricMAGPIETask
+    from algorithms.blind_magpie import BlindMAGPIETask
 
     if cfg.object_step_size != 1.0 or cfg.probe_step_size != 1.0:
         raise ValueError(
-            "Geometric MAGPIE uses the surrogate minimizer directly, so "
+            "Blind MAGPIE uses the surrogate minimizer directly, so "
             "object_step_size and probe_step_size must both be 1.0."
         )
 
-    task = GeometricMAGPIETask(
+    task = BlindMAGPIETask(
         build_real_rpie_options(dataset, cfg, device, seed=seed),
         multigrid_levels=multigrid_levels,
         probe_shift_tol=cfg.probe_shift_tol,

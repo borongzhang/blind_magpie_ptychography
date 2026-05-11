@@ -3,6 +3,8 @@ from __future__ import annotations
 import math
 from typing import Optional, TYPE_CHECKING
 
+from common import attach_residual_printer
+
 import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset
@@ -16,7 +18,6 @@ from ptychi.reconstructors.base import AnalyticalIterativePtychographyReconstruc
 from ptychi.timing.timer_utils import timer
 
 from algorithms.geometric_mean import aligned_geom_mean_torch
-from common import attach_residual_printer
 from synthetic.ptychi_rpie import ReconstructionResult, build_rpie_options
 from synthetic.utils import (
     ExperimentConfig,
@@ -28,7 +29,7 @@ if TYPE_CHECKING:
     import ptychi.data_structures.parameter_group as pg
 
 
-class GeometricMAGPIEReconstructor(AnalyticalIterativePtychographyReconstructor):
+class BlindMAGPIEReconstructor(AnalyticalIterativePtychographyReconstructor):
     parameter_group: "pg.PlanarPtychographyParameterGroup"
 
     def __init__(
@@ -87,7 +88,7 @@ class GeometricMAGPIEReconstructor(AnalyticalIterativePtychographyReconstructor)
 
         if object_.n_slices != 1:
             raise NotImplementedError(
-                "The geometric MAGPIE implementation assumes a single-slice object."
+                "The blind MAGPIE implementation assumes a single-slice object."
             )
 
         indices = indices.cpu()
@@ -544,7 +545,7 @@ class GeometricMAGPIEReconstructor(AnalyticalIterativePtychographyReconstructor)
             probe_positions.step_optimizer()
 
 
-class GeometricMAGPIETask(PtychographyTask):
+class BlindMAGPIETask(PtychographyTask):
     def __init__(
         self,
         options,
@@ -566,7 +567,7 @@ class GeometricMAGPIETask(PtychographyTask):
             probe_positions=self.probe_positions,
             opr_mode_weights=self.opr_mode_weights,
         )
-        self.reconstructor = GeometricMAGPIEReconstructor(
+        self.reconstructor = BlindMAGPIEReconstructor(
             parameter_group=par_group,
             dataset=self.dataset,
             options=self.reconstructor_options,
@@ -577,7 +578,7 @@ class GeometricMAGPIETask(PtychographyTask):
         self.reconstructor.build()
 
 
-def run_geometric_magpie(
+def run_blind_magpie(
     dataset: SyntheticDataset,
     cfg: ExperimentConfig,
     device: api.Devices,
@@ -587,11 +588,11 @@ def run_geometric_magpie(
 ) -> ReconstructionResult:
     if cfg.object_step_size != 1.0 or cfg.probe_step_size != 1.0:
         raise ValueError(
-            "Geometric MAGPIE uses the surrogate minimizer directly, so "
+            "Blind MAGPIE uses the surrogate minimizer directly, so "
             "object_step_size and probe_step_size must both be 1.0."
         )
 
-    task = GeometricMAGPIETask(
+    task = BlindMAGPIETask(
         build_rpie_options(dataset, cfg, device, seed=seed),
         multigrid_levels=multigrid_levels,
         assume_no_subpixel_shifts=assume_no_subpixel_shifts,

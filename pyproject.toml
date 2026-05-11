@@ -3,9 +3,9 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "magpie-experiments"
+name = "blind-magpie"
 version = "0.1.0"
-description = "Synthetic and real-data experiments for geometric MAGPIE ptychographic reconstruction."
+description = "Synthetic and real-data experiments for blind MAGPIE ptychographic reconstruction."
 requires-python = ">=3.11"
 dependencies = [
     "h5py",

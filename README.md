@@ -1,7 +1,7 @@
-# Geometric MAGPIE Experiments
+# Blind MAGPIE Experiments
 
 This repository contains small, focused experiments comparing Pty-Chi rPIE with
-the geometric MAGPIE update on synthetic and chip ptychography data.
+the blind MAGPIE update on synthetic and chip ptychography data.
 
 ## Layout
 
@@ -26,7 +26,7 @@ fresh checkout.
 
 - `examples/synthetic/magpie_synthetic.ipynb` compares rPIE and geometric
   MAGPIE on synthetic data with known ground truth.
-- `examples/chip/magpie_real_chip.ipynb` compares rPIE and geometric MAGPIE on
+- `examples/chip/magpie_real_chip.ipynb` compares rPIE and blind MAGPIE on
   the chip dataset.
 
 Real chip HDF5 files are kept under `assets/ptycho_real_data/` locally, but are

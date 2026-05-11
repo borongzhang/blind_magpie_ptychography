@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from common import attach_residual_printer, patch_ptychi_compatibility
+
 import numpy as np
 
 import ptychi.api as api
 from ptychi.api.task import PtychographyTask
 from ptychi.utils import get_suggested_object_size
 
-from common import patch_ptychi_compatibility
-from common import attach_residual_printer
 from synthetic.utils import (
     ExperimentConfig,
     SyntheticDataset,
