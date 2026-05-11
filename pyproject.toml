@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "magpie-experiments"
+version = "0.1.0"
+description = "Synthetic and real-data experiments for geometric MAGPIE ptychographic reconstruction."
+requires-python = ">=3.11"
+dependencies = [
+    "h5py",
+    "imageio",
+    "matplotlib",
+    "numpy",
+    "ptychi",
+    "scikit-image",
+    "scipy",
+    "torch",
+    "tqdm",
+]
+
+[project.optional-dependencies]
+notebooks = [
+    "ipykernel",
+    "jupyterlab",
+]
+
+[tool.setuptools]
+py-modules = ["common"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
