@@ -3,16 +3,14 @@
 Reference implementation and reproducible experiments for MAGPIE-based blind
 ptychographic reconstruction.
 
-This repository accompanies the forthcoming paper:
+This repository accompanies the preprint:
 
-> **[Paper title]**  
-> [Authors], [journal or arXiv], [year]  
-> [Paper link / DOI]
+> **[Stochastic Multigrid Method for Blind Ptychographic Phase Retrieval](https://arxiv.org/abs/2511.01793)**  
+> Borong Zhang, Junjing Deng, Yi Jiang, and Zichao Wendy Di  
+> arXiv:2511.01793 [math.NA], 2025 · [DOI](https://doi.org/10.48550/arXiv.2511.01793)
 
 The code compares five blind object-and-probe reconstruction methods in a
 common [Pty-Chi](https://github.com/AdvancedPhotonSource/pty-chi) pipeline.
-The final paper title, citation, and method capitalization will be inserted
-after the revised manuscript is available.
 
 ## Algorithms
 
@@ -61,10 +59,11 @@ Pty-Chi 1.4.0.
 git clone https://github.com/borongzhang/blind_magpie_ptychography.git
 cd blind_magpie_ptychography
 
-python -m venv .venv
-source .venv/bin/activate
+conda create --name blind_magpie python=3.11 -y
+conda activate blind_magpie
 python -m pip install --upgrade pip
 python -m pip install -e ".[notebooks]"
+python -m ipykernel install --user --name blind_magpie --display-name "Python (blind_magpie)"
 ```
 
 Then start Jupyter from the repository root:
@@ -72,6 +71,8 @@ Then start Jupyter from the repository root:
 ```bash
 jupyter lab
 ```
+
+Open a notebook and select **Python (blind_magpie)** as its kernel.
 
 ## Experiments
 
@@ -126,12 +127,15 @@ If this repository contributes to your work, please cite the accompanying
 paper:
 
 ```bibtex
-@article{zhang_magpie_YEAR,
-  title   = {[Paper title]},
-  author  = {[Authors]},
-  journal = {[Journal or arXiv]},
-  year    = {[Year]},
-  doi     = {[DOI]}
+@misc{zhang2025stochastic,
+  title         = {Stochastic Multigrid Method for Blind Ptychographic Phase Retrieval},
+  author        = {Zhang, Borong and Deng, Junjing and Jiang, Yi and Di, Zichao Wendy},
+  year          = {2025},
+  eprint        = {2511.01793},
+  archivePrefix = {arXiv},
+  primaryClass  = {math.NA},
+  doi           = {10.48550/arXiv.2511.01793},
+  url           = {https://arxiv.org/abs/2511.01793}
 }
 ```
 
