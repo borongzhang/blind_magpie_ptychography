@@ -1,14 +1,11 @@
 .DS_Store
+.venv/
 __pycache__/
 *.py[cod]
 .ipynb_checkpoints/
 .pytest_cache/
-.venv/
-
-# Large local data files.
+.ruff_cache/
+build/
+dist/
+*.egg-info/
 assets/ptycho_real_data/*.hdf5
-
-# Search/output artifacts.
-assets/parameter_search/*.csv
-assets/parameter_search/*.json
-outputs/

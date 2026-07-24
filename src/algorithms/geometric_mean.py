@@ -1,45 +1,36 @@
-from __future__ import annotations
-
-import os
-
-os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
-os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
-
 import torch
 
 
 def aligned_geom_mean_torch(
     a: torch.Tensor,
     b: torch.Tensor,
-    anchor: torch.Tensor,
-    tol: float = 1e-14,
 ) -> torch.Tensor:
-    """
-    Phase-aligned complex geometric mean.
+    """Return the short-arc complex geometric mean closest to both inputs.
 
-    Returns x satisfying x**2 = a * b, with the square-root branch chosen
-    relative to anchor. In the MAGPIE-GM update, anchor is the current iterate.
+    Of the two values satisfying ``x**2 = a * b``, this independently chooses
+    the branch on the shorter phase arc between ``a`` and ``b``. Numerically
+    antipodal inputs take the positive relative-imaginary branch. Finite zero
+    inputs return zero, while nonfinite inputs propagate.
     """
-    if (
-        a.dtype in (torch.float64, torch.complex128)
-        or b.dtype in (torch.float64, torch.complex128)
-        or anchor.dtype in (torch.float64, torch.complex128)
-    ):
-        dtype = torch.complex128
-    else:
-        dtype = torch.complex64
-
+    dtype = torch.complex64
     if (not torch.is_complex(a)) or a.dtype != dtype:
         a = a.to(dtype)
     if (not torch.is_complex(b)) or b.dtype != dtype:
         b = b.to(dtype)
-    if (not torch.is_complex(anchor)) or anchor.dtype != dtype:
-        anchor = anchor.to(dtype)
 
-    x = torch.sqrt(a * b)
-    inner = x * torch.conj(anchor)
-    re = inner.real
-    im = inner.imag
-    tol_tensor = torch.as_tensor(tol, dtype=re.dtype, device=re.device)
-    flip = (re < -tol_tensor) | ((re.abs() <= tol_tensor) & (im < 0))
-    return torch.where(flip, -x, x)
+    a, b = torch.broadcast_tensors(a, b)
+    phase_a = torch.sgn(a)
+    phase_b = torch.sgn(b)
+    relative_phase = phase_b * torch.conj(phase_a)
+    relative_root = torch.sqrt(relative_phase)
+    tolerance = 2 * torch.finfo(relative_phase.real.dtype).eps
+    flip_tie = (
+        (relative_phase.real < 0)
+        & (torch.abs(relative_phase.imag) <= tolerance)
+        & (relative_root.imag < 0)
+    )
+    relative_root = torch.where(flip_tie, -relative_root, relative_root)
+
+    magnitude = torch.sqrt(torch.abs(a)) * torch.sqrt(torch.abs(b))
+    result = magnitude * phase_a * relative_root
+    return result

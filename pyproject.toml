@@ -10,23 +10,21 @@ requires-python = ">=3.11"
 dependencies = [
     "h5py",
     "imageio",
-    "matplotlib",
     "numpy",
     "ptychi",
     "scikit-image",
-    "scipy",
     "torch",
-    "tqdm",
 ]
 
 [project.optional-dependencies]
 notebooks = [
     "ipykernel",
     "jupyterlab",
+    "matplotlib",
 ]
-
-[tool.setuptools]
-py-modules = ["common"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
