@@ -80,7 +80,7 @@ Open a notebook and select **Python (blind_magpie)** as its kernel.
 |---|---|---:|
 | [`examples/synthetic/synthetic_final.ipynb`](examples/synthetic/synthetic_final.ipynb) | Synthetic data with known object and probe | Generated in the notebook |
 | [`examples/real_data/chip_final.ipynb`](examples/real_data/chip_final.ipynb) | Complete chip scan | 812 |
-| [`examples/real_data/chip_partial_scan_final.ipynb`](examples/real_data/chip_partial_scan_final.ipynb) | Every fourth chip position | 203 of 812 |
+| [`examples/real_data/chip_quarter_scan_final.ipynb`](examples/real_data/chip_partial_scan_final.ipynb) | Every fourth chip position | 203 of 812 |
 | [`examples/real_data/test_pattern_final.ipynb`](examples/real_data/test_pattern_final.ipynb) | Complete test-pattern scan | 14,641 |
 | [`examples/real_data/test_pattern_quarter_scan_final.ipynb`](examples/real_data/test_pattern_quarter_scan_final.ipynb) | Every fourth test-pattern position | 3,661 of 14,641 |
 
