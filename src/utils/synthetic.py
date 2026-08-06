@@ -226,7 +226,7 @@ def _generate_measurements(
         torch.from_numpy(fractional_shifts),
         method="fourier",
         adjoint=False,
-        pad=1,
+        pad=0,
     ).numpy(force=True)
 
     patterns = []

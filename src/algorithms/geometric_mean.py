@@ -23,6 +23,9 @@ def aligned_geom_mean_torch(
     phase_b = torch.sgn(b)
     relative_phase = phase_b * torch.conj(phase_a)
     relative_root = torch.sqrt(relative_phase)
+
+    # Enforce a deterministic +i branch for numerically antipodal phases near
+    # the square-root branch cut at phase ±π.
     tolerance = 2 * torch.finfo(relative_phase.real.dtype).eps
     flip_tie = (
         (relative_phase.real < 0)

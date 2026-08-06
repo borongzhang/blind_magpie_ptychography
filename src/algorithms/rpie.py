@@ -45,7 +45,7 @@ def build_synthetic_rpie_options(
         object_alpha=cfg.object_alpha,
         probe_alpha=cfg.probe_alpha,
         remove_object_probe_ambiguity=cfg.remove_object_probe_ambiguity,
-        pad_for_shift=1,
+        pad_for_shift=0,
     )
     options.reconstructor_options.batching_mode = api.BatchingModes.RANDOM
     options.object_options.remove_object_probe_ambiguity.optimization_plan.stride = 1

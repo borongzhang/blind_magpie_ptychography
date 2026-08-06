@@ -9,7 +9,7 @@ This repository accompanies the preprint:
 > Borong Zhang, Junjing Deng, Yi Jiang, and Zichao Wendy Di  
 > arXiv:2511.01793 [math.NA], 2025 · [DOI](https://doi.org/10.48550/arXiv.2511.01793)
 
-The code compares five blind object-and-probe reconstruction methods in a
+The code compares four blind object-and-probe reconstruction methods in a
 common [Pty-Chi](https://github.com/AdvancedPhotonSource/pty-chi) pipeline.
 
 ## Algorithms
@@ -17,14 +17,9 @@ common [Pty-Chi](https://github.com/AdvancedPhotonSource/pty-chi) pipeline.
 | Method | Local object proposal | Local probe proposal | Geometric mean and weighted synthesis |
 |---|---|---|---|
 | **rPIE** | rPIE | rPIE | No |
-| **MAGPIE-O** | MAGPIE | rPIE | No |
 | **GM-rPIE** | rPIE | rPIE | Yes |
-| **GM-MAGPIE-O** | MAGPIE | rPIE | Yes |
-| **GM-MAGPIE-OP** | MAGPIE | MAGPIE | Yes |
-
-`MAGPIE-O` changes only the local object update in native rPIE. It retains the
-native rPIE probe update and update application, without a geometric-mean step
-or custom minibatch synthesis.
+| **GM-MAGPIE** | MAGPIE | rPIE | Yes |
+| **LSQML** | Least-squares maximum likelihood | Least-squares maximum likelihood | No |
 
 The GM methods geometrically average each current local estimate with its
 updated proposal. For minibatches larger than one, the resulting local object
@@ -32,21 +27,48 @@ and probe estimates are combined with counterpart-intensity-weighted
 synthesis. The probe synthesis uses the adjoint of the same fractional shift
 operator used by the forward model.
 
+LSQML provides a simple maximum-likelihood baseline. Its object and probe
+optimal-step scalers are tied to one value, `beta`, while its likelihood is
+matched to the data used by each experiment. The two chip notebooks use
+Gaussian LSQML for their processed fractional intensities and fix `beta=0.5`.
+That value was selected by a bounded 20-epoch screen on the quarter-chip data
+over `{0.3, 0.5, 0.7, 0.9, 1.0}`. The complete and quarter-scan test-pattern
+notebooks retain their current Poisson configurations with `beta=0.7` and
+`beta=0.9`, respectively. The synthetic notebook also retains Poisson LSQML
+with `beta=0.9`.
+
 All MAGPIE-based methods in the final experiments use every valid multigrid
 level. The experiments use the native Pty-Chi fractional-position convention:
 object patches are extracted at integer scan anchors and the fractional
 offsets are applied to the probe.
 
+Fourier probe shifts are applied without padding, assuming the probe is
+negligible at the array boundary. Under this assumption, the inverse Fourier
+shift used in probe updates is the exact adjoint.
+
 ## Reproducibility conventions
 
-Within each notebook, the five methods share the dataset, initialization,
-batch size, scan permutations, unit object/probe step sizes, and forward
-model. A fresh random permutation of all retained scan positions is traversed
-once per epoch, and the object and probe are updated in every minibatch.
+Within each notebook, the four methods share the dataset, initialization,
+batch size, scan permutations, and forward model. The three alpha-based
+methods use unit object/probe step sizes; LSQML uses the tied optimal-step
+scaler described above. A fresh random permutation of all retained scan
+positions is traversed once per epoch, and the object and probe are updated in
+every minibatch.
 
 The final notebooks enable object-probe ambiguity removal after every epoch.
-The algorithm-specific object and probe `alpha` values are exposed near the
-top of each notebook and are the only tuned reconstruction hyperparameters.
+The rPIE- and MAGPIE-based methods expose their algorithm-specific object and
+probe `alpha` values near the top of each notebook. In the synthetic notebook,
+object and probe `alpha` are searched independently using
+`sqrt(object NMSE * probe NMSE)`, while both object and probe step sizes remain
+fixed at `1.0` for rPIE, GM-rPIE, and GM-MAGPIE. LSQML keeps its Poisson
+likelihood and fixed `beta=0.9` baseline. The real-data notebooks retain their
+listed alpha-method settings and use the dataset-specific LSQML configurations
+described above.
+
+For the chip object/probe visual comparisons, each recovered pair is aligned
+by removing the global and affine phase ambiguity and the reciprocal blind
+scalar gauge before a shared display scale is applied.
+
 Arrays used by the reconstruction pipeline are single precision
 (`float32`/`complex64`).
 
@@ -80,7 +102,7 @@ Open a notebook and select **Python (blind_magpie)** as its kernel.
 |---|---|---:|
 | [`examples/synthetic/synthetic_final.ipynb`](examples/synthetic/synthetic_final.ipynb) | Synthetic data with known object and probe | Generated in the notebook |
 | [`examples/real_data/chip_final.ipynb`](examples/real_data/chip_final.ipynb) | Complete chip scan | 812 |
-| [`examples/real_data/chip_partial_scan_final.ipynb`](examples/real_data/chip_partial_scan_final.ipynb) | Every fourth chip position | 203 of 812 |
+| [`examples/real_data/chip_quarter_scan_final.ipynb`](examples/real_data/chip_quarter_scan_final.ipynb) | Every fourth chip position | 203 of 812 |
 | [`examples/real_data/test_pattern_final.ipynb`](examples/real_data/test_pattern_final.ipynb) | Complete test-pattern scan | 14,641 |
 | [`examples/real_data/test_pattern_quarter_scan_final.ipynb`](examples/real_data/test_pattern_quarter_scan_final.ipynb) | Every fourth test-pattern position | 3,661 of 14,641 |
 
@@ -88,6 +110,9 @@ The synthetic notebook reports truth-based object and probe errors in addition
 to the diffraction residual. Since ground truth is unavailable for the real
 datasets, the real-data notebooks compare residual histories and reconstructed
 object/probe visualizations.
+
+Selected parameters, residual histories, and reconstruction visualizations are
+recorded directly in the corresponding notebooks.
 
 Two focused validation notebooks are also provided:
 
@@ -98,16 +123,14 @@ Two focused validation notebooks are also provided:
 
 ## Repository layout
 
-- `src/algorithms/`: rPIE, geometric-mean, and MAGPIE reconstruction code.
+- `src/algorithms/`: rPIE, geometric-mean, MAGPIE, and LSQML reconstruction
+  code.
 - `src/utils/`: shared simulation, data-loading, reconstruction, alignment, and
   plotting utilities.
 - `examples/synthetic/`: the matched synthetic comparison.
 - `examples/real_data/`: complete and subsampled real-data comparisons.
 - `examples/tests/`: focused mathematical and forward-model checks.
 - `assets/`: small synthetic assets and local real-data instructions.
-
-The auxiliary LSQML wrapper in `src/algorithms/lsqml.py` is not one of the five
-methods compared by the final notebooks.
 
 ## Real data
 

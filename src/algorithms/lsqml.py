@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from typing import TYPE_CHECKING
 
 import ptychi.api as api
@@ -8,6 +9,7 @@ from ptychi.api.task import PtychographyTask
 import torch
 
 from utils.reconstruction import (
+    ProgressCallback,
     ReconstructionResult,
     build_ptychi_options,
     make_complex_gaussian_object_init,
@@ -33,6 +35,13 @@ class LSQMLHyperparameters:
     noise_model: api.NoiseModels | str = api.NoiseModels.POISSON
 
     def __post_init__(self) -> None:
+        for name, value in (
+            ("object_step_size_scaler", self.object_step_size_scaler),
+            ("probe_step_size_scaler", self.probe_step_size_scaler),
+            ("gaussian_noise_std", self.gaussian_noise_std),
+        ):
+            if not math.isfinite(value) or value <= 0:
+                raise ValueError(f"{name} must be finite and positive.")
         object.__setattr__(
             self, "noise_model", _normalize_noise_model(self.noise_model)
         )
@@ -72,6 +81,11 @@ def build_lsqml_options(
     set_if_field(
         options.reconstructor_options, "gaussian_noise_std", gaussian_noise_std
     )
+    options.reconstructor_options.batching_mode = api.BatchingModes.RANDOM
+    options.reconstructor_options.rescale_probe_intensity_in_first_epoch = False
+    options.probe_options.orthogonalize_incoherent_modes.enabled = False
+    options.probe_options.orthogonalize_opr_modes.enabled = False
+    options.opr_mode_weight_options.optimizable = False
     return options
 
 
@@ -104,7 +118,7 @@ def build_synthetic_lsqml_options(
         probe_optimal_step_size_scaler=hyperparameters.probe_step_size_scaler,
         gaussian_noise_std=hyperparameters.gaussian_noise_std,
         remove_object_probe_ambiguity=cfg.remove_object_probe_ambiguity,
-        pad_for_shift=1,
+        pad_for_shift=0,
     )
     options.object_options.remove_object_probe_ambiguity.optimization_plan.stride = 1
     return options
@@ -117,6 +131,7 @@ def run_lsqml(
     seed: int | None = None,
     hyperparameters: LSQMLHyperparameters | None = None,
     error_stride: int | None = None,
+    progress_callback: ProgressCallback | None = None,
 ) -> ReconstructionResult:
     reconstruction_seed = cfg.reconstruction_seed if seed is None else seed
     task = PtychographyTask(
@@ -133,6 +148,8 @@ def run_lsqml(
         shuffle_generator.manual_seed(reconstruction_seed)
 
     if error_stride is None:
+        if progress_callback is not None:
+            raise ValueError("progress_callback requires error_stride.")
         return run_reconstruction_task(task)
 
     from utils.synthetic import score_blind_reconstruction
@@ -152,4 +169,5 @@ def run_lsqml(
         task,
         metric_function=score_errors,
         metric_stride=error_stride,
+        progress_callback=progress_callback,
     )

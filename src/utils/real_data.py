@@ -8,7 +8,7 @@ from algorithms.lsqml import (
     build_lsqml_options,
     safe_lsqml_device,
 )
-from algorithms.magpie import BlindMAGPIETask, MAGPIEObjectTask
+from algorithms.magpie import BlindMAGPIETask
 from algorithms.rpie import build_rpie_options as build_base_rpie_options
 from utils.common import PROJECT_ROOT
 from utils.optics import generate_probe
@@ -39,7 +39,7 @@ class RealDataConfig:
     pattern_stride: int = 1
     max_patterns: int | None = None
     fft_shift_data: bool = True
-    pad_for_shift: int = 1
+    pad_for_shift: int = 0
 
     num_epochs: int = 100
     batch_size: int = 16
@@ -249,7 +249,7 @@ def build_real_lsqml_options(
     if hyperparameters is None:
         hyperparameters = LSQMLHyperparameters()
 
-    return build_lsqml_options(
+    options = build_lsqml_options(
         data=dataset.data,
         valid_pixel_mask=None,
         positions_px=dataset.positions_px,
@@ -275,6 +275,8 @@ def build_real_lsqml_options(
         probe_update_stride=cfg.probe_update_stride,
         pad_for_shift=cfg.pad_for_shift,
     )
+    options.object_options.remove_object_probe_ambiguity.optimization_plan.stride = 1
+    return options
 
 
 def run_real_lsqml(
@@ -283,17 +285,28 @@ def run_real_lsqml(
     device: api.Devices,
     seed: int | None = None,
     hyperparameters: LSQMLHyperparameters | None = None,
+    report_stride: int | None = None,
+    progress_callback: ProgressCallback | None = None,
 ) -> ReconstructionResult:
+    reconstruction_seed = cfg.seed if seed is None else seed
     task = PtychographyTask(
         build_real_lsqml_options(
             dataset,
             cfg,
             device,
-            seed=seed,
+            seed=reconstruction_seed,
             hyperparameters=hyperparameters,
         )
     )
-    return run_reconstruction_task(task)
+    shuffle_generator = task.reconstructor.dataloader.generator
+    if shuffle_generator is None:
+        raise RuntimeError("LSQML random batching requires a DataLoader generator.")
+    shuffle_generator.manual_seed(reconstruction_seed)
+    return _run_real_task(
+        task,
+        report_stride=report_stride,
+        progress_callback=progress_callback,
+    )
 
 
 def run_real_blind_magpie(
@@ -301,7 +314,6 @@ def run_real_blind_magpie(
     cfg: RealDataConfig,
     device: api.Devices,
     multigrid_levels: int | None = None,
-    magpie_probe_update: bool = False,
     seed: int | None = None,
     report_stride: int | None = None,
     progress_callback: ProgressCallback | None = None,
@@ -321,41 +333,10 @@ def run_real_blind_magpie(
     task = BlindMAGPIETask(
         build_real_rpie_options(dataset, cfg, device, seed=reconstruction_seed),
         multigrid_levels=multigrid_levels,
-        magpie_probe_update=magpie_probe_update,
     )
     shuffle_generator = task.reconstructor.dataloader.generator
     if shuffle_generator is None:
         raise RuntimeError("MAGPIE random batching requires a shuffle generator.")
-    shuffle_generator.manual_seed(reconstruction_seed)
-    return _run_real_task(
-        task,
-        report_stride=report_stride,
-        progress_callback=progress_callback,
-    )
-
-
-def run_real_magpie_o(
-    dataset: RealPtychographyDataset,
-    cfg: RealDataConfig,
-    device: api.Devices,
-    seed: int | None = None,
-    report_stride: int | None = None,
-    progress_callback: ProgressCallback | None = None,
-) -> ReconstructionResult:
-    """Run direct MAGPIE-O with native rPIE probe and update application."""
-    reconstruction_seed = cfg.seed if seed is None else seed
-    task = MAGPIEObjectTask(
-        build_real_rpie_options(
-            dataset,
-            cfg,
-            device,
-            seed=reconstruction_seed,
-        ),
-        multigrid_levels=None,
-    )
-    shuffle_generator = task.reconstructor.dataloader.generator
-    if shuffle_generator is None:
-        raise RuntimeError("MAGPIE-O random batching requires a shuffle generator.")
     shuffle_generator.manual_seed(reconstruction_seed)
     return _run_real_task(
         task,
@@ -384,7 +365,7 @@ def run_real_gm_rpie(
     )
 
 
-def run_real_gm_magpie_o(
+def run_real_gm_magpie(
     dataset: RealPtychographyDataset,
     cfg: RealDataConfig,
     device: api.Devices,
@@ -392,33 +373,12 @@ def run_real_gm_magpie_o(
     report_stride: int | None = None,
     progress_callback: ProgressCallback | None = None,
 ) -> ReconstructionResult:
-    """Run GM-MAGPIE-O using every valid object multigrid level."""
+    """Run GM-MAGPIE using every valid object multigrid level."""
     return run_real_blind_magpie(
         dataset,
         cfg,
         device,
         multigrid_levels=None,
-        seed=seed,
-        report_stride=report_stride,
-        progress_callback=progress_callback,
-    )
-
-
-def run_real_gm_magpie_op(
-    dataset: RealPtychographyDataset,
-    cfg: RealDataConfig,
-    device: api.Devices,
-    seed: int | None = None,
-    report_stride: int | None = None,
-    progress_callback: ProgressCallback | None = None,
-) -> ReconstructionResult:
-    """Run GM-MAGPIE-OP using every valid object and probe level."""
-    return run_real_blind_magpie(
-        dataset,
-        cfg,
-        device,
-        multigrid_levels=None,
-        magpie_probe_update=True,
         seed=seed,
         report_stride=report_stride,
         progress_callback=progress_callback,

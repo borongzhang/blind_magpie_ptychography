@@ -10,7 +10,7 @@ import ptychi.api as api
 import ptychi.data_structures.parameter_group as paramgrp
 import ptychi.image_proc as ip
 from ptychi.api.task import PtychographyTask
-from ptychi.reconstructors.pie import PIEReconstructor, RPIEReconstructor
+from ptychi.reconstructors.pie import PIEReconstructor
 
 from algorithms.geometric_mean import aligned_geom_mean_torch
 
@@ -85,8 +85,6 @@ class _MAGPIEMultigridMixin:
         counterpart_old: torch.Tensor,
         psi_prime: torch.Tensor,
         alpha: float,
-        *,
-        max_over_batch: bool = False,
     ) -> torch.Tensor:
         """Return a multigrid MAGPIE endpoint for one bilinear factor."""
         q_levels = [counterpart_old]
@@ -94,10 +92,7 @@ class _MAGPIEMultigridMixin:
             q_levels.append(self._downsample_2x(q_levels[-1]))
 
         q_power = [self._power(q) for q in q_levels]
-        if max_over_batch:
-            q_max = q_power[0].amax()
-        else:
-            q_max = q_power[0].amax(dim=(-2, -1), keepdim=True)
+        q_max = q_power[0].amax(dim=(-2, -1), keepdim=True)
         regularizer = [alpha * (q_max - q_power[0]).clamp_min(0)]
         downsampled_power = []
         for level in range(1, self.num_levels):
@@ -152,7 +147,7 @@ class _MAGPIEMultigridMixin:
 
 
 class BlindMAGPIEReconstructor(_MAGPIEMultigridMixin, PIEReconstructor):
-    """Shared GM-rPIE, GM-MAGPIE-O, and GM-MAGPIE-OP pipeline.
+    """Shared GM-rPIE and GM-MAGPIE pipeline.
 
     Pty-Chi supplies a fresh random permutation of all scan positions each
     epoch. Every minibatch performs exactly one simultaneous object/probe
@@ -170,10 +165,8 @@ class BlindMAGPIEReconstructor(_MAGPIEMultigridMixin, PIEReconstructor):
         dataset: Dataset,
         options: "api.options.pie.PIEReconstructorOptions | None" = None,
         multigrid_levels: int | None = None,
-        magpie_probe_update: bool = False,
     ) -> None:
         self.requested_multigrid_levels = multigrid_levels
-        self.magpie_probe_update = magpie_probe_update
         super().__init__(parameter_group, dataset, options)
 
     def check_inputs(self) -> None:
@@ -264,19 +257,11 @@ class BlindMAGPIEReconstructor(_MAGPIEMultigridMixin, PIEReconstructor):
             )
 
         probe_old_batch = probe_old.expand(object_old.shape[0], -1, -1, -1)
-        if self.magpie_probe_update and self.num_levels > 1:
-            probe_plus = self._magpie_endpoint(
-                probe_old_batch,
-                object_old,
-                psi_prime,
-                float(self.parameter_group.probe.options.alpha),
-            )
-        else:
-            probe_plus = self._rpie_probe_endpoint(
-                probe_old,
-                object_old,
-                delta_psi,
-            )
+        probe_plus = self._rpie_probe_endpoint(
+            probe_old,
+            object_old,
+            delta_psi,
+        )
 
         object_local = aligned_geom_mean_torch(object_old, object_plus)
         probe_local = aligned_geom_mean_torch(
@@ -378,137 +363,13 @@ class BlindMAGPIEReconstructor(_MAGPIEMultigridMixin, PIEReconstructor):
         probe.set_data(probe_update, slicer=0, op="add")
 
 
-class MAGPIEObjectReconstructor(_MAGPIEMultigridMixin, RPIEReconstructor):
-    """Native rPIE with only its local object endpoint replaced by MAGPIE."""
-
-    parameter_group: "pg.PlanarPtychographyParameterGroup"
-
-    def __init__(
-        self,
-        parameter_group: "pg.PlanarPtychographyParameterGroup",
-        dataset: Dataset,
-        options: "api.options.pie.PIEReconstructorOptions | None" = None,
-        multigrid_levels: int | None = None,
-    ) -> None:
-        self.requested_multigrid_levels = multigrid_levels
-        super().__init__(parameter_group, dataset, options)
-
-    def check_inputs(self) -> None:
-        super().check_inputs()
-        object_ = self.parameter_group.object
-        probe = self.parameter_group.probe
-        positions = self.parameter_group.probe_positions
-
-        if object_.n_slices != 1:
-            raise ValueError("MAGPIE-O requires exactly one object slice.")
-        if tuple(probe.data.shape[:2]) != (1, 1):
-            raise ValueError("MAGPIE-O requires one OPR mode and one probe mode.")
-        if positions.optimizable:
-            raise ValueError("MAGPIE-O requires fixed scan positions.")
-
-        max_levels = self._valid_num_levels(*probe.data.shape[-2:])
-        if self.requested_multigrid_levels is None:
-            self.num_levels = max_levels
-        elif self.requested_multigrid_levels < 1:
-            raise ValueError("multigrid_levels must be positive or None.")
-        else:
-            self.num_levels = min(self.requested_multigrid_levels, max_levels)
-
-    def compute_updates(
-        self,
-        indices: torch.Tensor,
-        y_true: torch.Tensor,
-    ) -> tuple[tuple[torch.Tensor | None, ...], torch.Tensor]:
-        object_ = self.parameter_group.object
-        probe = self.parameter_group.probe
-        positions = self.parameter_group.probe_positions.tensor[indices.cpu()]
-
-        y_pred = self.forward_model.forward(indices.cpu())
-        variables = self.forward_model.intermediate_variables
-        object_old = variables["obj_patches"][:, 0:1]
-        probe_batch = variables.shifted_unique_probes[0]
-        if probe_batch.ndim == 3:
-            probe_batch = probe_batch[None]
-
-        psi_prime = self.replace_propagated_exit_wave_magnitude(
-            variables["psi_far"],
-            y_true,
-            constrained_pixel_mask=self.get_constrained_pixel_mask(y_true),
-        )
-        psi_prime = self.forward_model.free_space_propagator.propagate_backward(
-            psi_prime
-        )
-        delta_psi = psi_prime - variables["psi"]
-
-        delta_object = None
-        if object_.optimization_enabled(self.current_epoch):
-            object_plus = self._magpie_endpoint(
-                object_old,
-                probe_batch,
-                psi_prime,
-                float(object_.options.alpha),
-                max_over_batch=True,
-            )
-            local_delta = object_plus - object_old
-            delta_object = torch.zeros_like(object_.data)
-            delta_object[0] = ip.place_patches_integer(
-                torch.zeros_like(object_.get_slice(0)),
-                positions.round().int() + object_.pos_origin_coords,
-                local_delta[:, 0],
-                op="add",
-            )
-
-        delta_probe = None
-        if probe.optimization_enabled(self.current_epoch):
-            probe_weight = self.calculate_probe_step_weight(
-                variables["obj_patches"][:, 0:1]
-            )
-            delta_probe = probe_weight * delta_psi
-            delta_probe = self.adjoint_shift_probe_update_direction(
-                indices.cpu(),
-                delta_probe,
-                first_mode_only=True,
-            )
-
-        return (delta_object, delta_probe, None), y_pred
-
-
-class MAGPIEObjectTask(PtychographyTask):
-    """Task for direct MAGPIE-O with native rPIE update application."""
-
-    def __init__(
-        self,
-        options,
-        multigrid_levels: int | None = None,
-    ) -> None:
-        self.multigrid_levels = multigrid_levels
-        super().__init__(options)
-
-    def build_reconstructor(self) -> None:
-        parameter_group = paramgrp.PlanarPtychographyParameterGroup(
-            object=self.object,
-            probe=self.probe,
-            probe_positions=self.probe_positions,
-            opr_mode_weights=self.opr_mode_weights,
-        )
-        self.reconstructor = MAGPIEObjectReconstructor(
-            parameter_group,
-            self.dataset,
-            self.reconstructor_options,
-            self.multigrid_levels,
-        )
-        self.reconstructor.build()
-
-
 class BlindMAGPIETask(PtychographyTask):
     def __init__(
         self,
         options,
         multigrid_levels: int | None = None,
-        magpie_probe_update: bool = False,
     ) -> None:
         self.multigrid_levels = multigrid_levels
-        self.magpie_probe_update = magpie_probe_update
         super().__init__(options)
 
     def build_reconstructor(self) -> None:
@@ -523,7 +384,6 @@ class BlindMAGPIETask(PtychographyTask):
             self.dataset,
             self.reconstructor_options,
             self.multigrid_levels,
-            self.magpie_probe_update,
         )
         self.reconstructor.build()
 
@@ -565,42 +425,11 @@ def _run_synthetic_magpie_task(
     )
 
 
-def run_magpie_o(
-    dataset: "SyntheticDataset",
-    cfg: "ExperimentConfig",
-    device: api.Devices,
-    seed: int | None = None,
-    error_stride: int | None = None,
-    progress_callback: "ProgressCallback | None" = None,
-) -> "ReconstructionResult":
-    """Run direct MAGPIE-O with native rPIE probe and update application."""
-    from algorithms.rpie import build_synthetic_rpie_options
-
-    reconstruction_seed = cfg.reconstruction_seed if seed is None else seed
-    task = MAGPIEObjectTask(
-        build_synthetic_rpie_options(
-            dataset,
-            cfg,
-            device,
-            seed=reconstruction_seed,
-        ),
-        multigrid_levels=None,
-    )
-    return _run_synthetic_magpie_task(
-        task,
-        dataset,
-        reconstruction_seed,
-        error_stride,
-        progress_callback,
-    )
-
-
 def run_blind_magpie(
     dataset: "SyntheticDataset",
     cfg: "ExperimentConfig",
     device: api.Devices,
     multigrid_levels: int | None = None,
-    magpie_probe_update: bool = False,
     seed: int | None = None,
     error_stride: int | None = None,
     progress_callback: "ProgressCallback | None" = None,
@@ -617,7 +446,7 @@ def run_blind_magpie(
         device,
         seed=reconstruction_seed,
     )
-    task = BlindMAGPIETask(options, multigrid_levels, magpie_probe_update)
+    task = BlindMAGPIETask(options, multigrid_levels)
     return _run_synthetic_magpie_task(
         task,
         dataset,
@@ -627,7 +456,7 @@ def run_blind_magpie(
     )
 
 
-def run_gm_magpie_o(
+def run_gm_magpie(
     dataset: "SyntheticDataset",
     cfg: "ExperimentConfig",
     device: api.Devices,
@@ -635,33 +464,12 @@ def run_gm_magpie_o(
     error_stride: int | None = None,
     progress_callback: "ProgressCallback | None" = None,
 ) -> "ReconstructionResult":
-    """Run GM-MAGPIE-O using every valid object multigrid level."""
+    """Run GM-MAGPIE using every valid object multigrid level."""
     return run_blind_magpie(
         dataset,
         cfg,
         device,
         multigrid_levels=None,
-        seed=seed,
-        error_stride=error_stride,
-        progress_callback=progress_callback,
-    )
-
-
-def run_gm_magpie_op(
-    dataset: "SyntheticDataset",
-    cfg: "ExperimentConfig",
-    device: api.Devices,
-    seed: int | None = None,
-    error_stride: int | None = None,
-    progress_callback: "ProgressCallback | None" = None,
-) -> "ReconstructionResult":
-    """Run GM-MAGPIE-OP using every valid object and probe level."""
-    return run_blind_magpie(
-        dataset,
-        cfg,
-        device,
-        multigrid_levels=None,
-        magpie_probe_update=True,
         seed=seed,
         error_stride=error_stride,
         progress_callback=progress_callback,
