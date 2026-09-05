@@ -5,16 +5,22 @@ from pathlib import Path
 
 from algorithms.lsqml import (
     LSQMLHyperparameters,
+    MPSCompatibleLSQMLTask,
     build_lsqml_options,
-    safe_lsqml_device,
 )
 from algorithms.magpie import BlindMAGPIETask
-from algorithms.rpie import build_rpie_options as build_base_rpie_options
+from algorithms.rpie import (
+    ReplicatePaddedRPIETask,
+    build_rpie_options as build_base_rpie_options,
+)
 from utils.common import PROJECT_ROOT
 from utils.optics import generate_probe
 from utils.reconstruction import (
+    FinalMetricFunction,
     ProgressCallback,
     ReconstructionResult,
+    StateSnapshotCallback,
+    TaskMetricFunction,
     make_negative_complex_gaussian_object_init,
     run_reconstruction_task,
 )
@@ -39,7 +45,6 @@ class RealDataConfig:
     pattern_stride: int = 1
     max_patterns: int | None = None
     fft_shift_data: bool = True
-    pad_for_shift: int = 0
 
     num_epochs: int = 100
     batch_size: int = 16
@@ -54,10 +59,23 @@ class RealDataConfig:
     probe_update_stride: int = 1
     save_data_on_device: bool = False
     remove_object_probe_ambiguity: bool = True
+    random_pattern_fraction: float | None = None
 
     def __post_init__(self) -> None:
         if self.pattern_stride < 1:
             raise ValueError("pattern_stride must be at least 1.")
+        if self.random_pattern_fraction is not None:
+            if not 0 < self.random_pattern_fraction <= 1:
+                raise ValueError("random_pattern_fraction must be in (0, 1].")
+            if self.pattern_stride != 1:
+                raise ValueError(
+                    "random_pattern_fraction and pattern_stride cannot both select "
+                    "a pattern subset."
+                )
+        if self.max_patterns is not None and self.max_patterns < 1:
+            raise ValueError("max_patterns must be positive when provided.")
+        if self.batch_size < 1:
+            raise ValueError("batch_size must be positive.")
 
 
 @dataclass
@@ -67,10 +85,38 @@ class RealPtychographyDataset:
     probe_init: np.ndarray
     dx_m: float
     wavelength_m: float
+    selected_pattern_indices: np.ndarray = field(
+        default_factory=lambda: np.empty(0, dtype=np.int64)
+    )
+    source_pattern_count: int = 0
 
 
 def _selected_pattern_indices(handle: h5py.File, cfg: RealDataConfig) -> np.ndarray:
     num_patterns = int(handle["dp"].shape[0])
+    if cfg.random_pattern_fraction is not None:
+        requested_count = int(np.floor(num_patterns * cfg.random_pattern_fraction))
+        if cfg.max_patterns is not None:
+            requested_count = min(requested_count, int(cfg.max_patterns))
+
+        # Random-selection experiments use complete minibatches. Dropping the
+        # remainder also gives every method the same number of updates.
+        selected_count = requested_count - requested_count % cfg.batch_size
+        if selected_count == 0:
+            raise ValueError(
+                "Random pattern selection retained fewer than one complete batch: "
+                f"requested {requested_count} patterns with batch_size={cfg.batch_size}."
+            )
+
+        generator = np.random.default_rng(cfg.seed)
+        indices = generator.choice(
+            num_patterns,
+            size=selected_count,
+            replace=False,
+        ).astype(np.int64, copy=False)
+        # h5py requires increasing indices for advanced indexing. Sorting does
+        # not change which scan regions were selected.
+        return np.sort(indices)
+
     indices = np.arange(0, num_patterns, cfg.pattern_stride, dtype=np.int64)
     if cfg.max_patterns is not None:
         indices = indices[: min(int(cfg.max_patterns), len(indices))]
@@ -128,6 +174,7 @@ def preprocess_real_intensities(data: np.ndarray) -> np.ndarray:
 
 def load_real_dataset(cfg: RealDataConfig) -> RealPtychographyDataset:
     with h5py.File(cfg.data_path, "r") as handle:
+        source_pattern_count = int(handle["dp"].shape[0])
         pattern_indices = _selected_pattern_indices(handle, cfg)
         data = preprocess_real_intensities(
             _read_pattern_subset(handle["dp"], pattern_indices)
@@ -162,6 +209,8 @@ def load_real_dataset(cfg: RealDataConfig) -> RealPtychographyDataset:
         probe_init=probe,
         dx_m=dx_m,
         wavelength_m=wavelength_m,
+        selected_pattern_indices=pattern_indices,
+        source_pattern_count=source_pattern_count,
     )
 
 
@@ -194,9 +243,11 @@ def build_real_rpie_options(
         remove_object_probe_ambiguity=cfg.remove_object_probe_ambiguity,
         probe_update_start_epoch=cfg.probe_update_start_epoch,
         probe_update_stride=cfg.probe_update_stride,
-        pad_for_shift=cfg.pad_for_shift,
     )
     options.reconstructor_options.batching_mode = api.BatchingModes.RANDOM
+    # Keep online residuals comparable across real-data algorithms even if a
+    # future Pty-Chi release changes an algorithm-specific display default.
+    options.reconstructor_options.displayed_loss_function = api.LossFunctions.MSE_SQRT
     options.object_options.remove_object_probe_ambiguity.optimization_plan.stride = 1
     return options
 
@@ -206,11 +257,23 @@ def _run_real_task(
     *,
     report_stride: int | None,
     progress_callback: ProgressCallback | None,
+    task_metric_function: TaskMetricFunction | None,
+    final_metric_function: FinalMetricFunction | None,
+    snapshot_callback: StateSnapshotCallback | None,
+    snapshot_stride: int | None,
+    include_initial_metrics: bool,
+    chunk_epochs: bool,
 ) -> ReconstructionResult:
     return run_reconstruction_task(
         task,
         metric_stride=1 if report_stride is None else report_stride,
         progress_callback=progress_callback,
+        task_metric_function=task_metric_function,
+        final_metric_function=final_metric_function,
+        snapshot_callback=snapshot_callback,
+        snapshot_stride=snapshot_stride,
+        include_initial_metrics=include_initial_metrics,
+        chunk_epochs=chunk_epochs,
     )
 
 
@@ -221,9 +284,15 @@ def run_real_rpie(
     seed: int | None = None,
     report_stride: int | None = None,
     progress_callback: ProgressCallback | None = None,
+    task_metric_function: TaskMetricFunction | None = None,
+    final_metric_function: FinalMetricFunction | None = None,
+    snapshot_callback: StateSnapshotCallback | None = None,
+    snapshot_stride: int | None = None,
+    include_initial_metrics: bool = False,
+    chunk_epochs: bool = False,
 ) -> ReconstructionResult:
     reconstruction_seed = cfg.seed if seed is None else seed
-    task = PtychographyTask(
+    task = ReplicatePaddedRPIETask(
         build_real_rpie_options(dataset, cfg, device, seed=reconstruction_seed)
     )
     shuffle_generator = task.reconstructor.dataloader.generator
@@ -234,6 +303,12 @@ def run_real_rpie(
         task,
         report_stride=report_stride,
         progress_callback=progress_callback,
+        task_metric_function=task_metric_function,
+        final_metric_function=final_metric_function,
+        snapshot_callback=snapshot_callback,
+        snapshot_stride=snapshot_stride,
+        include_initial_metrics=include_initial_metrics,
+        chunk_epochs=chunk_epochs,
     )
 
 
@@ -245,9 +320,11 @@ def build_real_lsqml_options(
     hyperparameters: LSQMLHyperparameters | None = None,
 ) -> api.LSQMLOptions:
     reconstruction_seed = cfg.seed if seed is None else seed
-    device = safe_lsqml_device(device)
     if hyperparameters is None:
-        hyperparameters = LSQMLHyperparameters()
+        raise ValueError(
+            "Real-data LSQML requires explicit hyperparameters; pass the "
+            "noise model and both optimal-step-size scalers."
+        )
 
     options = build_lsqml_options(
         data=dataset.data,
@@ -273,9 +350,9 @@ def build_real_lsqml_options(
         remove_object_probe_ambiguity=cfg.remove_object_probe_ambiguity,
         probe_update_start_epoch=cfg.probe_update_start_epoch,
         probe_update_stride=cfg.probe_update_stride,
-        pad_for_shift=cfg.pad_for_shift,
     )
     options.object_options.remove_object_probe_ambiguity.optimization_plan.stride = 1
+    options.reconstructor_options.displayed_loss_function = api.LossFunctions.MSE_SQRT
     return options
 
 
@@ -287,9 +364,15 @@ def run_real_lsqml(
     hyperparameters: LSQMLHyperparameters | None = None,
     report_stride: int | None = None,
     progress_callback: ProgressCallback | None = None,
+    task_metric_function: TaskMetricFunction | None = None,
+    final_metric_function: FinalMetricFunction | None = None,
+    snapshot_callback: StateSnapshotCallback | None = None,
+    snapshot_stride: int | None = None,
+    include_initial_metrics: bool = False,
+    chunk_epochs: bool = False,
 ) -> ReconstructionResult:
     reconstruction_seed = cfg.seed if seed is None else seed
-    task = PtychographyTask(
+    task = MPSCompatibleLSQMLTask(
         build_real_lsqml_options(
             dataset,
             cfg,
@@ -306,6 +389,12 @@ def run_real_lsqml(
         task,
         report_stride=report_stride,
         progress_callback=progress_callback,
+        task_metric_function=task_metric_function,
+        final_metric_function=final_metric_function,
+        snapshot_callback=snapshot_callback,
+        snapshot_stride=snapshot_stride,
+        include_initial_metrics=include_initial_metrics,
+        chunk_epochs=chunk_epochs,
     )
 
 
@@ -317,6 +406,12 @@ def run_real_blind_magpie(
     seed: int | None = None,
     report_stride: int | None = None,
     progress_callback: ProgressCallback | None = None,
+    task_metric_function: TaskMetricFunction | None = None,
+    final_metric_function: FinalMetricFunction | None = None,
+    snapshot_callback: StateSnapshotCallback | None = None,
+    snapshot_stride: int | None = None,
+    include_initial_metrics: bool = False,
+    chunk_epochs: bool = False,
 ) -> ReconstructionResult:
     if cfg.object_step_size != 1.0 or cfg.probe_step_size != 1.0:
         raise ValueError(
@@ -342,6 +437,12 @@ def run_real_blind_magpie(
         task,
         report_stride=report_stride,
         progress_callback=progress_callback,
+        task_metric_function=task_metric_function,
+        final_metric_function=final_metric_function,
+        snapshot_callback=snapshot_callback,
+        snapshot_stride=snapshot_stride,
+        include_initial_metrics=include_initial_metrics,
+        chunk_epochs=chunk_epochs,
     )
 
 
@@ -352,6 +453,12 @@ def run_real_gm_rpie(
     seed: int | None = None,
     report_stride: int | None = None,
     progress_callback: ProgressCallback | None = None,
+    task_metric_function: TaskMetricFunction | None = None,
+    final_metric_function: FinalMetricFunction | None = None,
+    snapshot_callback: StateSnapshotCallback | None = None,
+    snapshot_stride: int | None = None,
+    include_initial_metrics: bool = False,
+    chunk_epochs: bool = False,
 ) -> ReconstructionResult:
     """Run GM-rPIE using one-level object and probe endpoints."""
     return run_real_blind_magpie(
@@ -362,6 +469,12 @@ def run_real_gm_rpie(
         seed=seed,
         report_stride=report_stride,
         progress_callback=progress_callback,
+        task_metric_function=task_metric_function,
+        final_metric_function=final_metric_function,
+        snapshot_callback=snapshot_callback,
+        snapshot_stride=snapshot_stride,
+        include_initial_metrics=include_initial_metrics,
+        chunk_epochs=chunk_epochs,
     )
 
 
@@ -372,6 +485,12 @@ def run_real_gm_magpie(
     seed: int | None = None,
     report_stride: int | None = None,
     progress_callback: ProgressCallback | None = None,
+    task_metric_function: TaskMetricFunction | None = None,
+    final_metric_function: FinalMetricFunction | None = None,
+    snapshot_callback: StateSnapshotCallback | None = None,
+    snapshot_stride: int | None = None,
+    include_initial_metrics: bool = False,
+    chunk_epochs: bool = False,
 ) -> ReconstructionResult:
     """Run GM-MAGPIE using every valid object multigrid level."""
     return run_real_blind_magpie(
@@ -382,4 +501,10 @@ def run_real_gm_magpie(
         seed=seed,
         report_stride=report_stride,
         progress_callback=progress_callback,
+        task_metric_function=task_metric_function,
+        final_metric_function=final_metric_function,
+        snapshot_callback=snapshot_callback,
+        snapshot_stride=snapshot_stride,
+        include_initial_metrics=include_initial_metrics,
+        chunk_epochs=chunk_epochs,
     )

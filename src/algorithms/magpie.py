@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+from numbers import Integral
 from typing import TYPE_CHECKING
 
 import torch
 import torch.nn.functional as F
-from torch.utils.data import Dataset
 
 import ptychi.api as api
 import ptychi.data_structures.parameter_group as paramgrp
@@ -14,9 +14,18 @@ from ptychi.reconstructors.pie import PIEReconstructor
 
 from algorithms.geometric_mean import aligned_geom_mean_torch
 
+from algorithms.probe_shift import ReplicatePaddedProbeShiftMixin
+
+
 if TYPE_CHECKING:
     import ptychi.data_structures.parameter_group as pg
-    from utils.reconstruction import ProgressCallback, ReconstructionResult
+    from torch.utils.data import Dataset
+    from utils.reconstruction import (
+        FinalMetricFunction,
+        ProgressCallback,
+        ReconstructionResult,
+        TaskMetricFunction,
+    )
     from utils.synthetic import ExperimentConfig, SyntheticDataset
 
 
@@ -92,7 +101,10 @@ class _MAGPIEMultigridMixin:
             q_levels.append(self._downsample_2x(q_levels[-1]))
 
         q_power = [self._power(q) for q in q_levels]
-        q_max = q_power[0].amax(dim=(-2, -1), keepdim=True)
+        # Use the same minibatch-wide fine-grid normalization as rPIE. Besides
+        # keeping every scan on a common scale, this makes a one-grid MAGPIE
+        # cycle reduce directly to the corresponding rPIE endpoint.
+        q_max = q_power[0].amax()
         regularizer = [alpha * (q_max - q_power[0]).clamp_min(0)]
         downsampled_power = []
         for level in range(1, self.num_levels):
@@ -135,7 +147,8 @@ class _MAGPIEMultigridMixin:
             regularizer[level],
         )
         for level in range(self.num_levels - 2, -1, -1):
-            z_new = z_levels[level] + self._upsample_2x(z_new - z_levels[level + 1])
+            coarse_correction = self._upsample_2x(z_new - z_levels[level + 1])
+            z_new = z_levels[level] + coarse_correction
             z_new = self._proximal_step(
                 z_new,
                 q_levels[level],
@@ -146,15 +159,19 @@ class _MAGPIEMultigridMixin:
         return z_new
 
 
-class BlindMAGPIEReconstructor(_MAGPIEMultigridMixin, PIEReconstructor):
+class BlindMAGPIEReconstructor(
+    ReplicatePaddedProbeShiftMixin,
+    _MAGPIEMultigridMixin,
+    PIEReconstructor,
+):
     """Shared GM-rPIE and GM-MAGPIE pipeline.
 
     Pty-Chi supplies a fresh random permutation of all scan positions each
     epoch. Every minibatch performs exactly one simultaneous object/probe
     update followed by geometric averaging and counterpart-intensity-weighted
     synthesis. As in native rPIE, object patches are extracted at integer scan
-    anchors and the fractional offsets are applied to the probe. The same global
-    object/probe gauge normalization used by rPIE is applied after every epoch.
+    anchors and the fractional offsets are applied to the probe. The same
+    global object/probe gauge configured for rPIE is retained.
     """
 
     parameter_group: "pg.PlanarPtychographyParameterGroup"
@@ -196,10 +213,15 @@ class BlindMAGPIEReconstructor(_MAGPIEMultigridMixin, PIEReconstructor):
         max_levels = self._valid_num_levels(*probe.data.shape[-2:])
         if self.requested_multigrid_levels is None:
             self.num_levels = max_levels
+        elif isinstance(self.requested_multigrid_levels, bool) or not isinstance(
+            self.requested_multigrid_levels,
+            Integral,
+        ):
+            raise TypeError("multigrid_levels must be a positive integer or None.")
         elif self.requested_multigrid_levels < 1:
             raise ValueError("multigrid_levels must be positive or None.")
         else:
-            self.num_levels = min(self.requested_multigrid_levels, max_levels)
+            self.num_levels = min(int(self.requested_multigrid_levels), max_levels)
 
     def build(self) -> None:
         """Build only what the joint update uses."""
@@ -240,21 +262,12 @@ class BlindMAGPIEReconstructor(_MAGPIEMultigridMixin, PIEReconstructor):
         )
         delta_psi = psi_prime - variables["psi"]
 
-        if self.num_levels == 1:
-            object_plus = self._rpie_object_endpoint(
-                object_old,
-                probe_old,
-                delta_psi,
-            )
-        else:
-            # GM-MAGPIE solves a separate local objective at each scan, so its
-            # object regularizer uses one spatial maximum per local probe.
-            object_plus = self._magpie_endpoint(
-                object_old,
-                probe_old,
-                psi_prime,
-                float(self.parameter_group.object.options.alpha),
-            )
+        object_plus = self._magpie_endpoint(
+            object_old,
+            probe_old,
+            psi_prime,
+            float(self.parameter_group.object.options.alpha),
+        )
 
         probe_old_batch = probe_old.expand(object_old.shape[0], -1, -1, -1)
         probe_plus = self._rpie_probe_endpoint(
@@ -277,17 +290,6 @@ class BlindMAGPIEReconstructor(_MAGPIEMultigridMixin, PIEReconstructor):
         )
         return y_pred
 
-    def _rpie_object_endpoint(
-        self,
-        object_old: torch.Tensor,
-        probe_old: torch.Tensor,
-        delta_psi: torch.Tensor,
-    ) -> torch.Tensor:
-        alpha = float(self.parameter_group.object.options.alpha)
-        probe_power = self._power(probe_old)
-        denominator = (1.0 - alpha) * probe_power + alpha * probe_power.amax()
-        return object_old + self._divide(probe_old.conj() * delta_psi, denominator)
-
     def _rpie_probe_endpoint(
         self,
         probe_old: torch.Tensor,
@@ -308,14 +310,34 @@ class BlindMAGPIEReconstructor(_MAGPIEMultigridMixin, PIEReconstructor):
         object_local: torch.Tensor,
         probe_local: torch.Tensor,
     ) -> None:
+        self._synthesize_object_update(
+            indices,
+            object_old,
+            object_local,
+            probe_local,
+        )
+        self._synthesize_probe_update(
+            indices,
+            probe_old,
+            probe_local,
+            object_local,
+        )
+
+    def _synthesize_object_update(
+        self,
+        indices: torch.Tensor,
+        object_old: torch.Tensor,
+        object_local: torch.Tensor,
+        probe_counterpart: torch.Tensor,
+    ) -> None:
         object_ = self.parameter_group.object
-        probe = self.parameter_group.probe
         positions = self.parameter_group.probe_positions.tensor[indices]
         integer_positions = positions.round().int() + object_.pos_origin_coords
 
-        # Minimize sum_k ||q'_k (P_k z - z'_k)||^2. P_k extracts an
-        # integer object patch, so the normal equation is a weighted scatter.
-        probe_weight = self._power(probe_local)
+        # Counterpart-intensity fusion minimizes
+        # sum_k ||q'_k (P_k z - z'_k)||^2. P_k extracts an integer object
+        # patch, so the normal equation is a normalized scatter.
+        probe_weight = self._power(probe_counterpart)
         object_field = object_.get_slice(0)
         numerator = ip.place_patches_integer(
             torch.zeros_like(object_field),
@@ -332,19 +354,20 @@ class BlindMAGPIEReconstructor(_MAGPIEMultigridMixin, PIEReconstructor):
         object_update = self._divide(numerator, denominator)
         object_.set_data(object_update, slicer=0, op="add")
 
-        # Take a diagonal weighted-adjoint synthesis step for
-        # sum_k ||z'_k (S_k Q - q'_k)||^2, using the same S_k as native rPIE.
-        probe_delta = probe_local - probe_old
-        if indices.numel() == 1:
-            probe_update = self.adjoint_shift_probe_update_direction(
-                indices,
-                probe_delta,
-                first_mode_only=True,
-            )[0]
-            probe.set_data(probe_update, slicer=0, op="add")
-            return
+    def _synthesize_probe_update(
+        self,
+        indices: torch.Tensor,
+        probe_old: torch.Tensor,
+        probe_local: torch.Tensor,
+        object_counterpart: torch.Tensor,
+    ) -> None:
+        probe = self.parameter_group.probe
 
-        object_weight = self._power(object_local)
+        # Take a residual-form normalized-adjoint synthesis step for
+        # sum_k ||z'_k (S_k Q - q'_k)||^2, retaining the exact adjoint of
+        # native rPIE's S_k.
+        probe_delta = probe_local - probe_old
+        object_weight = self._power(object_counterpart)
         probe_numerator = self.adjoint_shift_probe_update_direction(
             indices,
             object_weight * probe_delta,
@@ -382,8 +405,8 @@ class BlindMAGPIETask(PtychographyTask):
         self.reconstructor = BlindMAGPIEReconstructor(
             parameter_group,
             self.dataset,
-            self.reconstructor_options,
-            self.multigrid_levels,
+            options=self.reconstructor_options,
+            multigrid_levels=self.multigrid_levels,
         )
         self.reconstructor.build()
 
@@ -394,6 +417,9 @@ def _run_synthetic_magpie_task(
     reconstruction_seed: int,
     error_stride: int | None,
     progress_callback: "ProgressCallback | None",
+    task_metric_function: "TaskMetricFunction | None",
+    final_metric_function: "FinalMetricFunction | None",
+    include_initial_metrics: bool,
 ) -> "ReconstructionResult":
     from utils.reconstruction import run_reconstruction_task
 
@@ -403,9 +429,15 @@ def _run_synthetic_magpie_task(
     shuffle_generator.manual_seed(reconstruction_seed)
 
     if error_stride is None:
-        if progress_callback is not None:
-            raise ValueError("progress_callback requires error_stride.")
-        return run_reconstruction_task(task)
+        if progress_callback is not None or task_metric_function is not None:
+            raise ValueError(
+                "progress_callback and task_metric_function require error_stride."
+            )
+        return run_reconstruction_task(
+            task,
+            final_metric_function=final_metric_function,
+            include_initial_metrics=include_initial_metrics,
+        )
 
     from utils.synthetic import score_blind_reconstruction
 
@@ -422,6 +454,9 @@ def _run_synthetic_magpie_task(
         metric_function=score_errors,
         metric_stride=error_stride,
         progress_callback=progress_callback,
+        task_metric_function=task_metric_function,
+        final_metric_function=final_metric_function,
+        include_initial_metrics=include_initial_metrics,
     )
 
 
@@ -433,6 +468,9 @@ def run_blind_magpie(
     seed: int | None = None,
     error_stride: int | None = None,
     progress_callback: "ProgressCallback | None" = None,
+    task_metric_function: "TaskMetricFunction | None" = None,
+    final_metric_function: "FinalMetricFunction | None" = None,
+    include_initial_metrics: bool = False,
 ) -> "ReconstructionResult":
     from algorithms.rpie import build_synthetic_rpie_options
 
@@ -446,13 +484,19 @@ def run_blind_magpie(
         device,
         seed=reconstruction_seed,
     )
-    task = BlindMAGPIETask(options, multigrid_levels)
+    task = BlindMAGPIETask(
+        options,
+        multigrid_levels=multigrid_levels,
+    )
     return _run_synthetic_magpie_task(
         task,
         dataset,
         reconstruction_seed,
         error_stride,
         progress_callback,
+        task_metric_function,
+        final_metric_function,
+        include_initial_metrics,
     )
 
 
@@ -463,6 +507,9 @@ def run_gm_magpie(
     seed: int | None = None,
     error_stride: int | None = None,
     progress_callback: "ProgressCallback | None" = None,
+    task_metric_function: "TaskMetricFunction | None" = None,
+    final_metric_function: "FinalMetricFunction | None" = None,
+    include_initial_metrics: bool = False,
 ) -> "ReconstructionResult":
     """Run GM-MAGPIE using every valid object multigrid level."""
     return run_blind_magpie(
@@ -473,4 +520,7 @@ def run_gm_magpie(
         seed=seed,
         error_stride=error_stride,
         progress_callback=progress_callback,
+        task_metric_function=task_metric_function,
+        final_metric_function=final_metric_function,
+        include_initial_metrics=include_initial_metrics,
     )

@@ -3,11 +3,17 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import ptychi.api as api
+import ptychi.data_structures.parameter_group as paramgrp
 from ptychi.api.task import PtychographyTask
+from ptychi.reconstructors.pie import RPIEReconstructor
+
+from algorithms.probe_shift import ReplicatePaddedProbeShiftMixin
 
 from utils.reconstruction import (
+    FinalMetricFunction,
     ProgressCallback,
     ReconstructionResult,
+    TaskMetricFunction,
     build_ptychi_options,
     make_complex_gaussian_object_init,
     run_reconstruction_task,
@@ -15,6 +21,29 @@ from utils.reconstruction import (
 
 if TYPE_CHECKING:
     from utils.synthetic import ExperimentConfig, SyntheticDataset
+
+
+class ReplicatePaddedRPIEReconstructor(
+    ReplicatePaddedProbeShiftMixin,
+    RPIEReconstructor,
+):
+    """rPIE with the fixed replicate-padded probe shift and exact adjoint."""
+
+
+class ReplicatePaddedRPIETask(PtychographyTask):
+    def build_reconstructor(self) -> None:
+        parameter_group = paramgrp.PlanarPtychographyParameterGroup(
+            object=self.object,
+            probe=self.probe,
+            probe_positions=self.probe_positions,
+            opr_mode_weights=self.opr_mode_weights,
+        )
+        self.reconstructor = ReplicatePaddedRPIEReconstructor(
+            parameter_group=parameter_group,
+            dataset=self.dataset,
+            options=self.reconstructor_options,
+        )
+        self.reconstructor.build()
 
 
 def build_rpie_options(**kwargs) -> api.RPIEOptions:
@@ -45,7 +74,6 @@ def build_synthetic_rpie_options(
         object_alpha=cfg.object_alpha,
         probe_alpha=cfg.probe_alpha,
         remove_object_probe_ambiguity=cfg.remove_object_probe_ambiguity,
-        pad_for_shift=0,
     )
     options.reconstructor_options.batching_mode = api.BatchingModes.RANDOM
     options.object_options.remove_object_probe_ambiguity.optimization_plan.stride = 1
@@ -75,9 +103,12 @@ def run_rpie(
     seed: int | None = None,
     error_stride: int | None = None,
     progress_callback: ProgressCallback | None = None,
+    task_metric_function: TaskMetricFunction | None = None,
+    final_metric_function: FinalMetricFunction | None = None,
+    include_initial_metrics: bool = False,
 ) -> ReconstructionResult:
     reconstruction_seed = cfg.reconstruction_seed if seed is None else seed
-    task = PtychographyTask(
+    task = ReplicatePaddedRPIETask(
         build_synthetic_rpie_options(dataset, cfg, device, seed=seed)
     )
     shuffle_generator = task.reconstructor.dataloader.generator
@@ -86,9 +117,15 @@ def run_rpie(
     shuffle_generator.manual_seed(reconstruction_seed)
 
     if error_stride is None:
-        if progress_callback is not None:
-            raise ValueError("progress_callback requires error_stride.")
-        return run_reconstruction_task(task)
+        if progress_callback is not None or task_metric_function is not None:
+            raise ValueError(
+                "progress_callback and task_metric_function require error_stride."
+            )
+        return run_reconstruction_task(
+            task,
+            final_metric_function=final_metric_function,
+            include_initial_metrics=include_initial_metrics,
+        )
 
     from utils.synthetic import score_blind_reconstruction
 
@@ -108,4 +145,7 @@ def run_rpie(
         metric_function=score_errors,
         metric_stride=error_stride,
         progress_callback=progress_callback,
+        task_metric_function=task_metric_function,
+        final_metric_function=final_metric_function,
+        include_initial_metrics=include_initial_metrics,
     )

@@ -1,17 +1,11 @@
 import torch
 
 
-def aligned_geom_mean_torch(
+def _aligned_phase_midpoint_torch(
     a: torch.Tensor,
     b: torch.Tensor,
-) -> torch.Tensor:
-    """Return the short-arc complex geometric mean closest to both inputs.
-
-    Of the two values satisfying ``x**2 = a * b``, this independently chooses
-    the branch on the shorter phase arc between ``a`` and ``b``. Numerically
-    antipodal inputs take the positive relative-imaginary branch. Finite zero
-    inputs return zero, while nonfinite inputs propagate.
-    """
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Return broadcast inputs and their deterministic short-arc phase midpoint."""
     dtype = torch.complex64
     if (not torch.is_complex(a)) or a.dtype != dtype:
         a = a.to(dtype)
@@ -33,7 +27,20 @@ def aligned_geom_mean_torch(
         & (relative_root.imag < 0)
     )
     relative_root = torch.where(flip_tie, -relative_root, relative_root)
+    return a, b, phase_a * relative_root
 
+
+def aligned_geom_mean_torch(
+    a: torch.Tensor,
+    b: torch.Tensor,
+) -> torch.Tensor:
+    """Return the short-arc complex geometric mean closest to both inputs.
+
+    Of the two values satisfying ``x**2 = a * b``, this independently chooses
+    the branch on the shorter phase arc between ``a`` and ``b``. Numerically
+    antipodal inputs take the positive relative-imaginary branch. Finite zero
+    inputs return zero, while nonfinite inputs propagate.
+    """
+    a, b, phase_midpoint = _aligned_phase_midpoint_torch(a, b)
     magnitude = torch.sqrt(torch.abs(a)) * torch.sqrt(torch.abs(b))
-    result = magnitude * phase_a * relative_root
-    return result
+    return magnitude * phase_midpoint

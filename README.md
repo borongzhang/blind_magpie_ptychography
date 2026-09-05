@@ -1,170 +1,110 @@
-# MAGPIE for Blind Ptychography
+# MAGPIE for blind ptychography
 
-Reference implementation and reproducible experiments for MAGPIE-based blind
-ptychographic reconstruction.
+Code and experiments for [Stochastic Multigrid Method for Blind Ptychographic
+Phase Retrieval](https://arxiv.org/abs/2511.01793), by Borong Zhang, Junjing Deng,
+Yi Jiang, and Zichao Wendy Di.
 
-This repository accompanies the preprint:
-
-> **[Stochastic Multigrid Method for Blind Ptychographic Phase Retrieval](https://arxiv.org/abs/2511.01793)**  
-> Borong Zhang, Junjing Deng, Yi Jiang, and Zichao Wendy Di  
-> arXiv:2511.01793 [math.NA], 2025 · [DOI](https://doi.org/10.48550/arXiv.2511.01793)
-
-The code compares four blind object-and-probe reconstruction methods in a
-common [Pty-Chi](https://github.com/AdvancedPhotonSource/pty-chi) pipeline.
-
-## Algorithms
-
-| Method | Local object proposal | Local probe proposal | Geometric mean and weighted synthesis |
-|---|---|---|---|
-| **rPIE** | rPIE | rPIE | No |
-| **GM-rPIE** | rPIE | rPIE | Yes |
-| **GM-MAGPIE** | MAGPIE | rPIE | Yes |
-| **LSQML** | Least-squares maximum likelihood | Least-squares maximum likelihood | No |
-
-The GM methods geometrically average each current local estimate with its
-updated proposal. For minibatches larger than one, the resulting local object
-and probe estimates are combined with counterpart-intensity-weighted
-synthesis. The probe synthesis uses the adjoint of the same fractional shift
-operator used by the forward model.
-
-LSQML provides a simple maximum-likelihood baseline. Its object and probe
-optimal-step scalers are tied to one value, `beta`, while its likelihood is
-matched to the data used by each experiment. The two chip notebooks use
-Gaussian LSQML for their processed fractional intensities and fix `beta=0.5`.
-That value was selected by a bounded 20-epoch screen on the quarter-chip data
-over `{0.3, 0.5, 0.7, 0.9, 1.0}`. The complete and quarter-scan test-pattern
-notebooks retain their current Poisson configurations with `beta=0.7` and
-`beta=0.9`, respectively. The synthetic notebook also retains Poisson LSQML
-with `beta=0.9`.
-
-All MAGPIE-based methods in the final experiments use every valid multigrid
-level. The experiments use the native Pty-Chi fractional-position convention:
-object patches are extracted at integer scan anchors and the fractional
-offsets are applied to the probe.
-
-Fourier probe shifts are applied without padding, assuming the probe is
-negligible at the array boundary. Under this assumption, the inverse Fourier
-shift used in probe updates is the exact adjoint.
-
-## Reproducibility conventions
-
-Within each notebook, the four methods share the dataset, initialization,
-batch size, scan permutations, and forward model. The three alpha-based
-methods use unit object/probe step sizes; LSQML uses the tied optimal-step
-scaler described above. A fresh random permutation of all retained scan
-positions is traversed once per epoch, and the object and probe are updated in
-every minibatch.
-
-The final notebooks enable object-probe ambiguity removal after every epoch.
-The rPIE- and MAGPIE-based methods expose their algorithm-specific object and
-probe `alpha` values near the top of each notebook. In the synthetic notebook,
-object and probe `alpha` are searched independently using
-`sqrt(object NMSE * probe NMSE)`, while both object and probe step sizes remain
-fixed at `1.0` for rPIE, GM-rPIE, and GM-MAGPIE. LSQML keeps its Poisson
-likelihood and fixed `beta=0.9` baseline. The real-data notebooks retain their
-listed alpha-method settings and use the dataset-specific LSQML configurations
-described above.
-
-For the chip object/probe visual comparisons, each recovered pair is aligned
-by removing the global and affine phase ambiguity and the reciprocal blind
-scalar gauge before a shared display scale is applied.
-
-Arrays used by the reconstruction pipeline are single precision
-(`float32`/`complex64`).
+The notebooks compare rPIE, GM-rPIE, GM-MAGPIE, and LSQML using one shared
+implementation and Pty-Chi 1.4.0.
 
 ## Installation
 
-Python 3.11 or newer is required. The current experiments were developed with
-Pty-Chi 1.4.0.
+Use Python 3.11. The experiments use PyTorch 2.11 and torchvision 0.26; on an
+NVIDIA machine, install their CUDA-enabled builds for your GPU first.
 
 ```bash
-git clone https://github.com/borongzhang/blind_magpie_ptychography.git
-cd blind_magpie_ptychography
-
-conda create --name blind_magpie python=3.11 -y
-conda activate blind_magpie
+python3.11 -m venv .venv
+source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -e ".[notebooks]"
-python -m ipykernel install --user --name blind_magpie --display-name "Python (blind_magpie)"
-```
-
-Then start Jupyter from the repository root:
-
-```bash
+python -m ipykernel install --sys-prefix --name python3 --display-name "Python (MAGPIE)"
 jupyter lab
 ```
 
-Open a notebook and select **Python (blind_magpie)** as its kernel.
+Start Jupyter from the repository root, select this environment's kernel,
+then restart the kernel and run the selected notebook from top to bottom.
+Notebook settings near the top specify the seeds and all method parameters.
 
 ## Experiments
 
-| Notebook | Experiment | Retained positions |
-|---|---|---:|
-| [`examples/synthetic/synthetic_final.ipynb`](examples/synthetic/synthetic_final.ipynb) | Synthetic data with known object and probe | Generated in the notebook |
-| [`examples/real_data/chip_final.ipynb`](examples/real_data/chip_final.ipynb) | Complete chip scan | 812 |
-| [`examples/real_data/chip_quarter_scan_final.ipynb`](examples/real_data/chip_quarter_scan_final.ipynb) | Every fourth chip position | 203 of 812 |
-| [`examples/real_data/test_pattern_final.ipynb`](examples/real_data/test_pattern_final.ipynb) | Complete test-pattern scan | 14,641 |
-| [`examples/real_data/test_pattern_quarter_scan_final.ipynb`](examples/real_data/test_pattern_quarter_scan_final.ipynb) | Every fourth test-pattern position | 3,661 of 14,641 |
+| Study | Notebooks | Device | Settings |
+|---|---|---|---|
+| Overlap | [examples/synthetic](examples/synthetic) | Apple MPS | 50%, 62.5%, 75% overlap; eta=0.05; 3,000 epochs; batch 81 |
+| Noise | [examples/synthetic_noise](examples/synthetic_noise) | NVIDIA CUDA | 75% overlap; eta=0.05, 0.5, 1; 3,000 epochs; batch 81 |
+| Real data | [examples/real_data](examples/real_data) | NVIDIA CUDA | Full/half chip and full/quarter test pattern |
 
-The synthetic notebook reports truth-based object and probe errors in addition
-to the diffraction residual. Since ground truth is unavailable for the real
-datasets, the real-data notebooks compare residual histories and reconstructed
-object/probe visualizations.
+The overlap notebooks retain the local MPS setup; the noise and real-data
+notebooks explicitly select CUDA. They fail if their requested device is
+unavailable. In CUDA notebooks, `SMOKE_TEST = True` runs one epoch per method
+before committing to the full experiment. Real-data smoke runs use one batch;
+synthetic smoke runs retain the full generated dataset.
 
-Selected parameters, residual histories, and reconstruction visualizations are
-recorded directly in the corresponding notebooks.
+The synthetic studies use a 1,024 × 1,024 object, a 128 × 128 probe,
+position/data/reconstruction seeds 42/42/21, and scaled-Poisson measurements
+`Y = eta * Poisson(I / eta)`. Eta is not a noise percentage.
 
-Two focused validation notebooks are also provided:
+| Real-data notebook | Patterns | Detector | Batch | Epochs |
+|---|---:|---:|---:|---:|
+| [chip_full.ipynb](examples/real_data/chip_full.ipynb) | 812 | 512 × 512 | 29 | 200 |
+| [chip_half_scan.ipynb](examples/real_data/chip_half_scan.ipynb) | 406 | 512 × 512 | 29 | 200 |
+| [test_pattern_full.ipynb](examples/real_data/test_pattern_full.ipynb) | 14,592 | 256 × 256 | 64 | 100 |
+| [test_pattern_quarter_scan.ipynb](examples/real_data/test_pattern_quarter_scan.ipynb) | 3,648 | 256 × 256 | 64 | 300 |
 
-- [`examples/tests/geometric_mean_product_test.ipynb`](examples/tests/geometric_mean_product_test.ipynb)
-  checks the complex geometric-mean product and branch-selection properties.
-- [`examples/tests/subpixel_shift_test.ipynb`](examples/tests/subpixel_shift_test.ipynb)
-  checks the subpixel-shift convention against Pty-Chi's shift implementation.
+All four real comparisons use seed 42 and Gaussian LSQML with sigma=0.5 and
+tied step-size scaler=0.5. Full experiment parameters remain in each notebook.
 
-## Repository layout
+## Data
 
-- `src/algorithms/`: rPIE, geometric-mean, MAGPIE, and LSQML reconstruction
-  code.
-- `src/utils/`: shared simulation, data-loading, reconstruction, alignment, and
-  plotting utilities.
-- `examples/synthetic/`: the matched synthetic comparison.
-- `examples/real_data/`: complete and subsampled real-data comparisons.
-- `examples/tests/`: focused mathematical and forward-model checks.
-- `assets/`: small synthetic assets and local real-data instructions.
+The two synthetic input images are included in `assets/`. Supply the measured
+HDF5 files separately in [assets/ptycho_real_data](assets/ptycho_real_data/README.md).
+Large datasets and reconstruction arrays are excluded from this distribution.
 
-## Real data
+## Recorded results
 
-The large experimental HDF5 files are intentionally excluded from Git. Place
-the following files in `assets/ptycho_real_data/` before running the real-data
-notebooks:
+The saved summary values are collected in three files:
 
-- `Velo_18c3_comm_chip65nm_scan054_data_roi0_Ndp512_us2.hdf5`
-- `Velo_18c3_comm_TP_scan119_data_roi0_Ndp256_dp.hdf5`
+- [overlap.csv](results/overlap.csv)
+- [noise.csv](results/noise.csv)
+- [real_data.csv](results/real_data.csv)
 
-**Data availability:** [Add the facility, archive/download link, or access
-instructions used by the paper.]
+Each row retains the experiment, original run ID, backend, method, settings,
+and full-precision summary values. These are existing results, not reruns of
+the cleaned code. The eta=0.05 noise reference is the same MPS run as the 75%
+overlap reference; the corresponding CUDA notebook prepares a future rerun.
+There are nine unique recorded runs across the ten study configurations.
 
-## Citation
+Synthetic summaries distinguish frozen noisy/clean amplitude MSE from the
+online pre-update residual. Real summaries contain the online residual.
+Timings span different hardware and measurement procedures: the original MPS
+runs did not explicitly synchronize the accelerator, while CUDA runs did.
+They should not be combined into a controlled runtime comparison. Fixed seeds
+do not guarantee bitwise equality across accelerators or MPS reruns.
 
-If this repository contributes to your work, please cite the accompanying
-paper:
+Running a notebook creates a new full archive under `results/notebook_exports/`,
+including reconstruction arrays, curves, settings, and checksums. These generated
+files are ignored by Git.
 
-```bibtex
-@misc{zhang2025stochastic,
-  title         = {Stochastic Multigrid Method for Blind Ptychographic Phase Retrieval},
-  author        = {Zhang, Borong and Deng, Junjing and Jiang, Yi and Di, Zichao Wendy},
-  year          = {2025},
-  eprint        = {2511.01793},
-  archivePrefix = {arXiv},
-  primaryClass  = {math.NA},
-  doi           = {10.48550/arXiv.2511.01793},
-  url           = {https://arxiv.org/abs/2511.01793}
-}
+The notebooks include preserved outputs from the original runs, including plots
+and printed metrics. They have not been rerun after code cleanup. Personal paths
+in text logs are replaced with `<original-project>`.
+
+The CUDA eta=0.05 notebook has no saved outputs; use the linked MPS baseline.
+The quarter test-pattern notebook contains a partial saved history, stopping at
+GM-MAGPIE epoch 200; its complete 300-epoch result is in `results/real_data.csv`.
+The 62.5% overlap notebook's original source differs from its archived source
+hash, although displayed summary values match the saved results. These cases
+are also noted inside the relevant notebooks.
+
+## Layout
+
+```text
+src/          shared algorithms, simulation, data loading, metrics, and saving
+examples/     overlap, noise, and real-data notebooks
+assets/       synthetic inputs and measured-data instructions
+results/      three saved summary tables
 ```
 
-Please also cite Pty-Chi and the experimental data source where appropriate.
-
-## License
-
-**[Add the selected software license before the public release. Data may have
-separate access and reuse conditions.]**
+This folder can replace the code in a checkout of
+[blind_magpie_ptychography](https://github.com/borongzhang/blind_magpie_ptychography).
+Preserve the checkout's `.git` directory and remove superseded example files
+when copying. No license was specified in the original project.
