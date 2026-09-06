@@ -1,21 +1,8 @@
 from __future__ import annotations
 
-# Imports below the environment setup are intentional.
-# ruff: noqa: E402
-
 import os
 from pathlib import Path
-import tempfile
 from typing import Any
-
-os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
-os.environ.setdefault(
-    "MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "magpie-matplotlib")
-)
-os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "0")
-Path(os.environ["MPLCONFIGDIR"]).mkdir(parents=True, exist_ok=True)
-
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 import numpy as np
 import torch
@@ -23,19 +10,22 @@ import torch
 import ptychi.api as api
 import ptychi.device as ptychi_device
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
 
 def patch_ptychi_compatibility() -> None:
     """
     Keep the experiments runnable with the pip-installed Pty-Chi package.
 
-    The installed package uses Tensor.repeat for complex probe batches, which
-    fails on Apple MPS. It also rebuilds a bounding-box tensor from four
-    gradient-tracking scalar tensors. The local replacements preserve both
-    results while avoiding the MPS failure and the PyTorch scalar warning.
+    The installed package uses Tensor.repeat for complex probe batches and
+    rebuilds a bounding-box tensor from four gradient-tracking scalar tensors.
+    The local replacements preserve the experiment behavior across supported
+    accelerators while avoiding a device incompatibility and a scalar warning.
     """
     import ptychi.forward_models as forward_models
     import ptychi.data_structures.base as data_base
     import ptychi.data_structures.object as object_module
+    import ptychi.data_structures.probe_positions as probe_positions_module
 
     def get_unique_probes(self, indices, always_return_probe_batch=True):
         if self.probe.has_multiple_opr_modes:
@@ -71,82 +61,50 @@ def patch_ptychi_compatibility() -> None:
 
     object_module.Object.build_roi_bounding_box = build_roi_bounding_box
 
+    # Pty-Chi 1.4.0 calls torch.clip on a Python ``inf`` when the MAD-based
+    # position clip is disabled but a finite user cap is retained. Route that
+    # configuration through the base parameter implementation, whose scalar
+    # cap has the intended per-axis behavior for real-valued (y, x) positions.
+    current_position_step = probe_positions_module.ProbePositions.step_optimizer
+    if not getattr(current_position_step, "_magpie_no_mad_cap_fix", False):
+        original_position_step = current_position_step
 
-class PtychiMPSModule:
-    @staticmethod
-    def is_available() -> bool:
-        return torch.backends.mps.is_available()
-
-    @staticmethod
-    def device_count() -> int:
-        return 1 if torch.backends.mps.is_available() else 0
-
-    @staticmethod
-    def get_device_name(index: int = 0) -> str:
-        return "Apple MPS"
-
-    @staticmethod
-    def synchronize() -> None:
-        torch.mps.synchronize()
-
-    @staticmethod
-    def empty_cache() -> None:
-        torch.mps.empty_cache()
-
-    @staticmethod
-    def ipc_collect() -> None:
-        return None
-
-    @staticmethod
-    def mem_get_info() -> tuple[int, int]:
-        total = int(torch.mps.recommended_max_memory())
-        used = int(torch.mps.current_allocated_memory())
-        return max(total - used, 0), total
-
-
-def configure_ptychi_device(
-    use_mps: bool = True,
-    *,
-    backend: str | None = None,
-) -> api.Devices:
-    """Configure Pty-Chi for an explicitly selected accelerator or CPU.
-
-    Existing ``use_mps=True``/``False`` calls retain their MPS/CPU meaning.
-    ``backend`` overrides that legacy flag and accepts ``"mps"``, ``"cuda"``,
-    or ``"cpu"``. CUDA studies select their backend explicitly so their
-    computation cannot silently fall back to a different device.
-    """
-    selected = ("mps" if use_mps else "cpu") if backend is None else backend
-    if selected not in {"mps", "cuda", "cpu"}:
-        raise ValueError("backend must be 'mps', 'cuda', or 'cpu'.")
-    if selected == "mps":
-        if not torch.backends.mps.is_built():
-            raise RuntimeError(
-                "MPS was requested, but this PyTorch build has no MPS support."
+        def step_position_optimizer(self, clip_update=True, *args, **kwargs):
+            correction = self.options.correction_options
+            if clip_update and not correction.clip_update_magnitude_by_mad:
+                return data_base.ReconstructParameter.step_optimizer(
+                    self,
+                    limit=correction.update_magnitude_limit,
+                    *args,
+                    **kwargs,
+                )
+            return original_position_step(
+                self,
+                clip_update=clip_update,
+                *args,
+                **kwargs,
             )
-        if not torch.backends.mps.is_available():
-            raise RuntimeError(
-                "MPS was requested, but no Apple MPS device is available."
-            )
-        ptychi_device.set_torch_accelerator_module(PtychiMPSModule)
-        ptychi_device.AcceleratorModuleWrapper.get_to_device_string = classmethod(
-            lambda cls: "mps"
-        )
-        return api.Devices.GPU
-    if selected == "cuda" and not torch.cuda.is_available():
+
+        step_position_optimizer._magpie_no_mad_cap_fix = True
+        probe_positions_module.ProbePositions.step_optimizer = step_position_optimizer
+
+
+def configure_ptychi_device() -> api.Devices:
+    """Select an NVIDIA CUDA GPU and fail before a long run if unavailable."""
+    if not torch.cuda.is_available():
         raise RuntimeError(
             "CUDA was requested, but PyTorch cannot see an NVIDIA GPU. "
-            "Allocate a GPU and install a CUDA-enabled PyTorch build before "
-            "running this notebook."
+            "Allocate an NVIDIA GPU and install a CUDA-enabled "
+            "PyTorch build before running this notebook."
         )
 
-    # Reset both accelerator hooks when switching away from MPS in a reused
-    # kernel. CPU task options still select the CPU independently of this hook.
+    # Pty-Chi 1.4.0 normally defaults to CUDA. Set both hooks explicitly so a
+    # reused notebook kernel cannot retain accelerator state from another run.
     ptychi_device.set_torch_accelerator_module(torch.cuda)
     ptychi_device.AcceleratorModuleWrapper.get_to_device_string = classmethod(
         lambda cls: "cuda"
     )
-    return api.Devices.GPU if selected == "cuda" else api.Devices.CPU
+    return api.Devices.GPU
 
 
 def cuda_runtime_preflight() -> dict[str, Any]:
@@ -189,6 +147,7 @@ def cuda_runtime_preflight() -> dict[str, Any]:
         "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
         "complex_exp_and_sqrt": "passed",
     }
+
 
 def set_random_seed(seed: int) -> None:
     np.random.seed(seed)

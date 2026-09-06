@@ -195,8 +195,12 @@ class BlindMAGPIEReconstructor(
             raise ValueError("MAGPIE requires exactly one object slice.")
         if tuple(probe.data.shape[:2]) != (1, 1):
             raise ValueError("MAGPIE requires one OPR mode and one probe mode.")
-        if positions.optimizable:
-            raise ValueError("MAGPIE requires fixed scan positions.")
+        if (
+            positions.optimizable
+            and positions.position_correction.options.correction_type
+            is not api.PositionCorrectionTypes.GRADIENT
+        ):
+            raise ValueError("MAGPIE position refinement requires gradient correction.")
         if self.options.batching_mode != api.BatchingModes.RANDOM:
             raise ValueError("MAGPIE requires random minibatches.")
         if object_.step_size != 1.0 or probe.step_size != 1.0:
@@ -231,8 +235,11 @@ class BlindMAGPIEReconstructor(
         self.build_counter()
 
     def step_all_step_size_schedulers(self) -> None:
-        # Unit joint updates are fixed; no optimizer schedule is part of MAGPIE.
-        pass
+        # The object/probe joint updates are fixed at one. Position refinement
+        # is an independent optimizer and may have its own schedule.
+        self.parameter_group.probe_positions.step_step_size_scheduler(
+            epoch=self.current_epoch
+        )
 
     def run_minibatch(self, input_data, y_true, *args, **kwargs) -> None:
         del args, kwargs
@@ -269,6 +276,22 @@ class BlindMAGPIEReconstructor(
             float(self.parameter_group.object.options.alpha),
         )
 
+        # Match native PIE ordering: form every direction from the same
+        # pre-update state, then apply object, probe, and position updates in
+        # that order. The configured gradient correction uses delta_psi, the
+        # old object patch, and the already shifted probe.
+        delta_pos = None
+        probe_positions = self.parameter_group.probe_positions
+        if probe_positions.optimization_enabled(self.current_epoch):
+            delta_pos = torch.zeros_like(probe_positions.data)
+            delta_pos[indices] = probe_positions.position_correction.get_update(
+                delta_psi,
+                object_old,
+                object_plus - object_old,
+                probe_old,
+                self.parameter_group.object.step_size,
+            )
+
         probe_old_batch = probe_old.expand(object_old.shape[0], -1, -1, -1)
         probe_plus = self._rpie_probe_endpoint(
             probe_old,
@@ -288,6 +311,9 @@ class BlindMAGPIEReconstructor(
             object_local,
             probe_local,
         )
+        if delta_pos is not None:
+            probe_positions.set_grad(-delta_pos)
+            probe_positions.step_optimizer()
         return y_pred
 
     def _rpie_probe_endpoint(

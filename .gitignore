@@ -9,3 +9,4 @@ build/
 dist/
 *.egg-info/
 assets/ptycho_real_data/*.hdf5
+results/notebook_exports/

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import math
+from numbers import Integral
 from pathlib import Path
 
 from algorithms.lsqml import (
@@ -57,6 +59,14 @@ class RealDataConfig:
     probe_step_size: float = 1.0
     probe_update_start_epoch: int = 0
     probe_update_stride: int = 1
+    optimize_positions: bool = False
+    position_step_size: float = 0.3
+    position_update_start_epoch: int = 0
+    position_update_stop_epoch: int | None = None
+    position_update_stride: int = 1
+    position_constrain_mean: bool = True
+    position_clip_update_by_mad: bool = False
+    position_update_max_px: float | None = 0.1
     save_data_on_device: bool = False
     remove_object_probe_ambiguity: bool = True
     random_pattern_fraction: float | None = None
@@ -76,6 +86,49 @@ class RealDataConfig:
             raise ValueError("max_patterns must be positive when provided.")
         if self.batch_size < 1:
             raise ValueError("batch_size must be positive.")
+        for name, value in (
+            ("optimize_positions", self.optimize_positions),
+            ("position_constrain_mean", self.position_constrain_mean),
+            ("position_clip_update_by_mad", self.position_clip_update_by_mad),
+        ):
+            if not isinstance(value, bool):
+                raise TypeError(f"{name} must be boolean.")
+        if isinstance(self.position_step_size, bool) or not math.isfinite(
+            self.position_step_size
+        ):
+            raise ValueError("position_step_size must be finite.")
+        if self.position_step_size <= 0:
+            raise ValueError("position_step_size must be positive.")
+        for name, value in (
+            ("position_update_start_epoch", self.position_update_start_epoch),
+            ("position_update_stride", self.position_update_stride),
+        ):
+            if isinstance(value, bool) or not isinstance(value, Integral):
+                raise TypeError(f"{name} must be an integer.")
+        if self.position_update_start_epoch < 0:
+            raise ValueError("position_update_start_epoch must be nonnegative.")
+        if self.position_update_stride < 1:
+            raise ValueError("position_update_stride must be positive.")
+        if self.position_update_stop_epoch is not None:
+            if isinstance(self.position_update_stop_epoch, bool) or not isinstance(
+                self.position_update_stop_epoch,
+                Integral,
+            ):
+                raise TypeError(
+                    "position_update_stop_epoch must be an integer or None."
+                )
+            if self.position_update_stop_epoch <= self.position_update_start_epoch:
+                raise ValueError(
+                    "position_update_stop_epoch must be greater than "
+                    "position_update_start_epoch."
+                )
+        if self.position_update_max_px is not None:
+            if isinstance(self.position_update_max_px, bool) or not math.isfinite(
+                self.position_update_max_px
+            ):
+                raise ValueError("position_update_max_px must be finite or None.")
+            if self.position_update_max_px <= 0:
+                raise ValueError("position_update_max_px must be positive or None.")
 
 
 @dataclass
@@ -243,6 +296,14 @@ def build_real_rpie_options(
         remove_object_probe_ambiguity=cfg.remove_object_probe_ambiguity,
         probe_update_start_epoch=cfg.probe_update_start_epoch,
         probe_update_stride=cfg.probe_update_stride,
+        optimize_positions=cfg.optimize_positions,
+        position_step_size=cfg.position_step_size,
+        position_update_start_epoch=cfg.position_update_start_epoch,
+        position_update_stop_epoch=cfg.position_update_stop_epoch,
+        position_update_stride=cfg.position_update_stride,
+        position_constrain_mean=cfg.position_constrain_mean,
+        position_clip_update_by_mad=cfg.position_clip_update_by_mad,
+        position_update_max_px=cfg.position_update_max_px,
     )
     options.reconstructor_options.batching_mode = api.BatchingModes.RANDOM
     # Keep online residuals comparable across real-data algorithms even if a
@@ -262,7 +323,6 @@ def _run_real_task(
     snapshot_callback: StateSnapshotCallback | None,
     snapshot_stride: int | None,
     include_initial_metrics: bool,
-    chunk_epochs: bool,
 ) -> ReconstructionResult:
     return run_reconstruction_task(
         task,
@@ -273,7 +333,7 @@ def _run_real_task(
         snapshot_callback=snapshot_callback,
         snapshot_stride=snapshot_stride,
         include_initial_metrics=include_initial_metrics,
-        chunk_epochs=chunk_epochs,
+        chunk_epochs=True,
     )
 
 
@@ -289,7 +349,6 @@ def run_real_rpie(
     snapshot_callback: StateSnapshotCallback | None = None,
     snapshot_stride: int | None = None,
     include_initial_metrics: bool = False,
-    chunk_epochs: bool = False,
 ) -> ReconstructionResult:
     reconstruction_seed = cfg.seed if seed is None else seed
     task = ReplicatePaddedRPIETask(
@@ -308,7 +367,6 @@ def run_real_rpie(
         snapshot_callback=snapshot_callback,
         snapshot_stride=snapshot_stride,
         include_initial_metrics=include_initial_metrics,
-        chunk_epochs=chunk_epochs,
     )
 
 
@@ -350,6 +408,14 @@ def build_real_lsqml_options(
         remove_object_probe_ambiguity=cfg.remove_object_probe_ambiguity,
         probe_update_start_epoch=cfg.probe_update_start_epoch,
         probe_update_stride=cfg.probe_update_stride,
+        optimize_positions=cfg.optimize_positions,
+        position_step_size=cfg.position_step_size,
+        position_update_start_epoch=cfg.position_update_start_epoch,
+        position_update_stop_epoch=cfg.position_update_stop_epoch,
+        position_update_stride=cfg.position_update_stride,
+        position_constrain_mean=cfg.position_constrain_mean,
+        position_clip_update_by_mad=cfg.position_clip_update_by_mad,
+        position_update_max_px=cfg.position_update_max_px,
     )
     options.object_options.remove_object_probe_ambiguity.optimization_plan.stride = 1
     options.reconstructor_options.displayed_loss_function = api.LossFunctions.MSE_SQRT
@@ -369,7 +435,6 @@ def run_real_lsqml(
     snapshot_callback: StateSnapshotCallback | None = None,
     snapshot_stride: int | None = None,
     include_initial_metrics: bool = False,
-    chunk_epochs: bool = False,
 ) -> ReconstructionResult:
     reconstruction_seed = cfg.seed if seed is None else seed
     task = MPSCompatibleLSQMLTask(
@@ -394,7 +459,6 @@ def run_real_lsqml(
         snapshot_callback=snapshot_callback,
         snapshot_stride=snapshot_stride,
         include_initial_metrics=include_initial_metrics,
-        chunk_epochs=chunk_epochs,
     )
 
 
@@ -411,7 +475,6 @@ def run_real_blind_magpie(
     snapshot_callback: StateSnapshotCallback | None = None,
     snapshot_stride: int | None = None,
     include_initial_metrics: bool = False,
-    chunk_epochs: bool = False,
 ) -> ReconstructionResult:
     if cfg.object_step_size != 1.0 or cfg.probe_step_size != 1.0:
         raise ValueError(
@@ -442,7 +505,6 @@ def run_real_blind_magpie(
         snapshot_callback=snapshot_callback,
         snapshot_stride=snapshot_stride,
         include_initial_metrics=include_initial_metrics,
-        chunk_epochs=chunk_epochs,
     )
 
 
@@ -458,7 +520,6 @@ def run_real_gm_rpie(
     snapshot_callback: StateSnapshotCallback | None = None,
     snapshot_stride: int | None = None,
     include_initial_metrics: bool = False,
-    chunk_epochs: bool = False,
 ) -> ReconstructionResult:
     """Run GM-rPIE using one-level object and probe endpoints."""
     return run_real_blind_magpie(
@@ -474,7 +535,6 @@ def run_real_gm_rpie(
         snapshot_callback=snapshot_callback,
         snapshot_stride=snapshot_stride,
         include_initial_metrics=include_initial_metrics,
-        chunk_epochs=chunk_epochs,
     )
 
 
@@ -490,7 +550,6 @@ def run_real_gm_magpie(
     snapshot_callback: StateSnapshotCallback | None = None,
     snapshot_stride: int | None = None,
     include_initial_metrics: bool = False,
-    chunk_epochs: bool = False,
 ) -> ReconstructionResult:
     """Run GM-MAGPIE using every valid object multigrid level."""
     return run_real_blind_magpie(
@@ -506,5 +565,4 @@ def run_real_gm_magpie(
         snapshot_callback=snapshot_callback,
         snapshot_stride=snapshot_stride,
         include_initial_metrics=include_initial_metrics,
-        chunk_epochs=chunk_epochs,
     )
