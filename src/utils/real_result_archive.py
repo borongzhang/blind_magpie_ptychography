@@ -19,7 +19,6 @@ from typing import Any
 import numpy as np
 
 from utils.result_archive import (
-    ARCHIVE_SCHEMA_VERSION,
     _SAFE_RUN_ID,
     _atomic_savez,
     _atomic_write_text,
@@ -39,6 +38,8 @@ CANONICAL_REAL_METHODS = ("rPIE", "LSQML", "GM-rPIE", "GM-MAGPIE")
 REAL_ARCHIVE_KIND = "magpie-real-data-comparison"
 REAL_CHECKPOINT_KIND = "magpie-real-data-method-checkpoint"
 REAL_SNAPSHOT_KIND = "magpie-real-data-epoch-snapshot"
+REAL_ARCHIVE_SCHEMA_VERSION = 2
+_LEGACY_FIXED_POSITION_CHECKPOINT_SCHEMA_VERSION = 1
 
 
 def _finite_array(value: Any, *, label: str) -> np.ndarray:
@@ -223,16 +224,27 @@ def _validate_real_reconstruction_snapshot(
     path = Path(path).resolve()
     keys = _validate_npz(
         path,
-        {"object", "probe", "epoch", "metadata_json"},
+        {"object", "probe", "positions_px", "epoch", "metadata_json"},
     )
-    if keys != {"object", "probe", "epoch", "metadata_json"}:
+    if keys != {"object", "probe", "positions_px", "epoch", "metadata_json"}:
         raise ValueError(f"Unexpected arrays in reconstruction snapshot: {path}.")
 
     with np.load(path, allow_pickle=False) as payload:
         object_snapshot = _finite_array(payload["object"], label=f"{path}:object")
         probe_snapshot = _finite_array(payload["probe"], label=f"{path}:probe")
+        positions_snapshot = _finite_array(
+            payload["positions_px"],
+            label=f"{path}:positions_px",
+        )
         if not np.iscomplexobj(object_snapshot) or not np.iscomplexobj(probe_snapshot):
             raise TypeError("Reconstruction snapshots must be complex-valued.")
+        if (
+            np.iscomplexobj(positions_snapshot)
+            or not np.issubdtype(positions_snapshot.dtype, np.floating)
+            or positions_snapshot.ndim != 2
+            or positions_snapshot.shape[1] != 2
+        ):
+            raise TypeError("Snapshot positions_px must be a real (patterns, 2) array.")
         saved_epoch = np.asarray(payload["epoch"])
         if saved_epoch.shape != () or not np.issubdtype(saved_epoch.dtype, np.integer):
             raise TypeError(f"{path}:epoch must be an integer scalar.")
@@ -248,7 +260,7 @@ def _validate_real_reconstruction_snapshot(
 
     expected = {
         "archive_kind": REAL_SNAPSHOT_KIND,
-        "schema_version": ARCHIVE_SCHEMA_VERSION,
+        "schema_version": REAL_ARCHIVE_SCHEMA_VERSION,
         "run_id": run_id,
         "method": method,
         "method_file_stem": method_file_stem,
@@ -262,6 +274,7 @@ def _validate_real_reconstruction_snapshot(
     expected_arrays = {
         "object": object_snapshot,
         "probe": probe_snapshot,
+        "positions_px": positions_snapshot,
     }
     array_metadata = metadata.get("arrays")
     if not isinstance(array_metadata, Mapping) or set(array_metadata) != set(
@@ -292,6 +305,7 @@ def save_real_reconstruction_snapshot(
     epoch: int,
     object_snapshot: np.ndarray,
     probe_snapshot: np.ndarray,
+    positions_snapshot: np.ndarray,
 ) -> Path:
     """Atomically save one completed real-data reconstruction epoch.
 
@@ -314,8 +328,19 @@ def save_real_reconstruction_snapshot(
 
     object_array = _finite_array(object_snapshot, label="snapshot object")
     probe_array = _finite_array(probe_snapshot, label="snapshot probe")
+    positions_array = _finite_array(
+        positions_snapshot,
+        label="snapshot positions_px",
+    )
     if not np.iscomplexobj(object_array) or not np.iscomplexobj(probe_array):
         raise TypeError("Reconstruction snapshots must be complex-valued.")
+    if (
+        np.iscomplexobj(positions_array)
+        or not np.issubdtype(positions_array.dtype, np.floating)
+        or positions_array.ndim != 2
+        or positions_array.shape[1] != 2
+    ):
+        raise TypeError("Snapshot positions_px must be a real (patterns, 2) array.")
 
     path = _snapshot_directory(
         output_root,
@@ -326,7 +351,7 @@ def save_real_reconstruction_snapshot(
         raise FileExistsError(f"Refusing to overwrite reconstruction snapshot: {path}")
     metadata = {
         "archive_kind": REAL_SNAPSHOT_KIND,
-        "schema_version": ARCHIVE_SCHEMA_VERSION,
+        "schema_version": REAL_ARCHIVE_SCHEMA_VERSION,
         "run_id": run_id,
         "method": method,
         "method_file_stem": method_file_stem,
@@ -340,6 +365,7 @@ def save_real_reconstruction_snapshot(
             for name, value in {
                 "object": object_array,
                 "probe": probe_array,
+                "positions_px": positions_array,
             }.items()
         },
     }
@@ -348,6 +374,7 @@ def save_real_reconstruction_snapshot(
         {
             "object": object_array,
             "probe": probe_array,
+            "positions_px": positions_array,
             "epoch": np.asarray(epoch, dtype=np.int64),
             "metadata_json": np.asarray(_canonical_json(metadata)),
         },
@@ -369,6 +396,39 @@ def _verify_npz_array_hashes(path: Path, expected: Mapping[str, str]) -> None:
         for key, expected_hash in expected.items():
             if _sha256_array(payload[key]) != expected_hash:
                 raise RuntimeError(f"Array hash verification failed for {path}:{key}.")
+
+
+def _validate_saved_position_arrays(
+    path: Path,
+    *,
+    expected_count: int | None = None,
+    initial_positions: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    with np.load(path, allow_pickle=False) as payload:
+        positions = _finite_array(payload["positions_px"], label=f"{path}:positions_px")
+        shifts = _finite_array(
+            payload["position_shifts_px"],
+            label=f"{path}:position_shifts_px",
+        )
+    for name, value in (("positions_px", positions), ("position_shifts_px", shifts)):
+        if np.iscomplexobj(value) or not np.issubdtype(value.dtype, np.floating):
+            raise TypeError(f"{path}:{name} must contain real floating-point values.")
+        if value.ndim != 2 or value.shape[1] != 2:
+            raise ValueError(f"{path}:{name} must have shape (patterns, 2).")
+    if shifts.shape != positions.shape:
+        raise ValueError(f"{path}:position arrays have inconsistent shapes.")
+    if expected_count is not None and positions.shape[0] != expected_count:
+        raise ValueError(f"{path}:position arrays have the wrong pattern count.")
+    if initial_positions is not None:
+        initial = np.asarray(initial_positions)
+        if initial.shape != positions.shape or not np.array_equal(
+            shifts,
+            positions - initial,
+        ):
+            raise ValueError(
+                f"{path}:saved position shifts do not match the initial scan."
+            )
+    return positions, shifts
 
 
 @dataclass
@@ -461,7 +521,7 @@ class RealResultArchiveSession:
     def session_fingerprint(self) -> str:
         payload = {
             "archive_kind": REAL_ARCHIVE_KIND,
-            "schema_version": ARCHIVE_SCHEMA_VERSION,
+            "schema_version": REAL_ARCHIVE_SCHEMA_VERSION,
             "experiment_name": self.experiment_name,
             "run_id": self.run_id,
             "run_started_utc": self.run_started_utc.astimezone(
@@ -497,7 +557,7 @@ class RealResultArchiveSession:
             "selected_pattern_indices_sha256": _sha256_array(
                 self.dataset.selected_pattern_indices
             ),
-            "positions_px_sha256": _sha256_array(self.dataset.positions_px),
+            "initial_positions_px_sha256": _sha256_array(self.dataset.positions_px),
             "probe_initial_sha256": _sha256_array(self.dataset.probe_init),
             "alignment_fit_mask_sha256": _sha256_array(self.alignment_fit_mask),
         }
@@ -686,6 +746,39 @@ class RealResultArchiveSession:
                 f"{method} aligned object does not match alignment_fit_mask."
             )
 
+        initial_positions = _finite_array(
+            self.dataset.positions_px,
+            label="dataset.positions_px",
+        )
+        refined_positions = _finite_array(
+            result.positions_px,
+            label=f"{method} positions_px",
+        )
+        if np.iscomplexobj(refined_positions) or not np.issubdtype(
+            refined_positions.dtype,
+            np.floating,
+        ):
+            raise TypeError(
+                f"{method} positions_px must be real floating-point values."
+            )
+        if refined_positions.shape != initial_positions.shape:
+            raise ValueError(
+                f"{method} positions_px must contain one (y, x) pair per frame."
+            )
+        position_shifts = refined_positions - initial_positions
+        position_shift_norms = np.linalg.norm(position_shifts, axis=1)
+        position_summary = {
+            "coordinate_order": ["y", "x"],
+            "units": "pixel",
+            "pattern_count": int(len(refined_positions)),
+            "rms_shift_px": float(
+                np.sqrt(np.mean(np.square(position_shift_norms), dtype=np.float64))
+            ),
+            "max_shift_px": float(np.max(position_shift_norms)),
+            "mean_shift_y_px": float(np.mean(position_shifts[:, 0], dtype=np.float64)),
+            "mean_shift_x_px": float(np.mean(position_shifts[:, 1], dtype=np.float64)),
+        }
+
         residual = _finite_array(
             result.residual_history,
             label=f"{method} residual_history",
@@ -746,6 +839,8 @@ class RealResultArchiveSession:
         payload: dict[str, Any] = {
             "object": raw_object,
             "probe": raw_probe,
+            "positions_px": refined_positions,
+            "position_shifts_px": position_shifts,
             "aligned_object": object_aligned,
             "aligned_probe": probe_aligned,
             "residual_history": residual,
@@ -764,7 +859,7 @@ class RealResultArchiveSession:
                 _canonical_json(
                     {
                         "archive_kind": REAL_CHECKPOINT_KIND,
-                        "schema_version": ARCHIVE_SCHEMA_VERSION,
+                        "schema_version": REAL_ARCHIVE_SCHEMA_VERSION,
                         "experiment_name": self.experiment_name,
                         "run_id": self.run_id,
                         "method": method,
@@ -790,7 +885,7 @@ class RealResultArchiveSession:
         )
         manifest = {
             "archive_kind": REAL_CHECKPOINT_KIND,
-            "schema_version": ARCHIVE_SCHEMA_VERSION,
+            "schema_version": REAL_ARCHIVE_SCHEMA_VERSION,
             "experiment_name": self.experiment_name,
             "run_id": self.run_id,
             "session_fingerprint": self.session_fingerprint,
@@ -807,6 +902,7 @@ class RealResultArchiveSession:
             "final_metrics": result.final_metrics,
             "alignment": alignment_values,
             "alignment_scale_amplitude": self.alignment_scale_amplitude,
+            "position_refinement": position_summary,
             "array_sha256": {
                 name: _sha256_array(value)
                 for name, value in payload.items()
@@ -828,8 +924,9 @@ class RealResultArchiveSession:
         """Atomically save one method; an existing checkpoint is never replaced."""
         if method not in self.method_order:
             raise ValueError(f"Unknown method {method!r}.")
+        snapshot_records: list[dict[str, Any]] = []
         if self.snapshot_every is not None:
-            _method_snapshot_records(
+            snapshot_records = _method_snapshot_records(
                 self,
                 method,
                 directory=(self.epoch_snapshot_root / self.method_file_stems[method]),
@@ -842,6 +939,18 @@ class RealResultArchiveSession:
             aligned_probe=aligned_probe,
             alignment=alignment,
         )
+        if snapshot_records:
+            final_snapshot = (
+                self.epoch_snapshot_root
+                / self.method_file_stems[method]
+                / snapshot_records[-1]["filename"]
+            )
+            with np.load(final_snapshot, allow_pickle=False) as snapshot:
+                for name in ("object", "probe", "positions_px"):
+                    if not np.array_equal(snapshot[name], payload[name]):
+                        raise ValueError(
+                            f"{method} final snapshot does not match final {name}."
+                        )
         stem = self.method_file_stems[method]
         checkpoint_root = self.checkpoint_root
         final_directory = checkpoint_root / stem
@@ -869,7 +978,11 @@ class RealResultArchiveSession:
 
 
 def validate_real_method_checkpoint(directory: Path) -> dict[str, Any]:
-    """Validate one completed method checkpoint and return its manifest."""
+    """Validate one completed v1 or v2 method checkpoint and return its manifest.
+
+    Schema v1 is supported only as a read-only, fixed-position legacy format. New
+    checkpoints are always written as schema v2 and include refined positions.
+    """
     directory = Path(directory).resolve()
     manifest_path = directory / "method_manifest.json"
     success_path = directory / "_SUCCESS"
@@ -882,11 +995,17 @@ def validate_real_method_checkpoint(directory: Path) -> dict[str, Any]:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if manifest.get("archive_kind") != REAL_CHECKPOINT_KIND:
         raise ValueError(f"Not a real-data method checkpoint: {directory}")
+    schema_version = manifest.get("schema_version")
+    if schema_version not in {
+        _LEGACY_FIXED_POSITION_CHECKPOINT_SCHEMA_VERSION,
+        REAL_ARCHIVE_SCHEMA_VERSION,
+    }:
+        raise ValueError(f"Unsupported real-data checkpoint schema: {directory}")
     method = manifest.get("method")
     if success_path.read_text(encoding="utf-8") != f"{method}\n":
         raise RuntimeError(f"Checkpoint success marker does not match {method!r}.")
     _verify_checksum_file(directory)
-    required_keys = {
+    common_required_keys = {
         "object",
         "probe",
         "aligned_object",
@@ -901,12 +1020,31 @@ def validate_real_method_checkpoint(directory: Path) -> dict[str, Any]:
         *{f"metric_history__{key}" for key in manifest.get("sampled_metric_keys", ())},
         *{f"final_metric__{key}" for key in manifest.get("final_metric_keys", ())},
     }
+    required_keys = set(common_required_keys)
+    if schema_version == REAL_ARCHIVE_SCHEMA_VERSION:
+        required_keys.update({"positions_px", "position_shifts_px"})
     keys = _validate_npz(directory / "reconstruction.npz", required_keys)
     if any(key.startswith("data") or "intensity" in key for key in keys):
         raise ValueError("A checkpoint must not duplicate measured diffraction data.")
     _verify_npz_array_hashes(
         directory / "reconstruction.npz",
         manifest.get("array_sha256", {}),
+    )
+    if schema_version == _LEGACY_FIXED_POSITION_CHECKPOINT_SCHEMA_VERSION:
+        position_keys = {"positions_px", "position_shifts_px"}
+        if keys & position_keys or "position_refinement" in manifest:
+            raise ValueError(
+                "A schema-v1 checkpoint must remain a fixed-position legacy "
+                f"record without refined-position fields: {directory}"
+            )
+        return manifest
+
+    position_metadata = manifest.get("position_refinement")
+    if not isinstance(position_metadata, Mapping):
+        raise ValueError(f"Checkpoint position metadata is missing: {directory}")
+    _validate_saved_position_arrays(
+        directory / "reconstruction.npz",
+        expected_count=int(position_metadata.get("pattern_count", -1)),
     )
     return manifest
 
@@ -951,6 +1089,13 @@ def _method_snapshot_records(
             method_file_stem=stem,
             epoch=epoch,
         )
+        if metadata["arrays"]["positions_px"]["shape"] != [
+            len(session.dataset.positions_px),
+            2,
+        ]:
+            raise ValueError(
+                f"Reconstruction snapshot has the wrong position count: {path}."
+            )
         records.append(
             {
                 "epoch": epoch,
@@ -1000,6 +1145,11 @@ def save_real_notebook_results(session: RealResultArchiveSession) -> Path:
     for method in session.method_order:
         checkpoint = session.checkpoint_root / session.method_file_stems[method]
         manifest = validate_real_method_checkpoint(checkpoint)
+        if manifest.get("schema_version") != REAL_ARCHIVE_SCHEMA_VERSION:
+            raise ValueError(
+                "A new schema-v2 comparison archive cannot be assembled from "
+                f"a legacy schema-v1 checkpoint: {checkpoint}"
+            )
         if manifest.get("method") != method:
             raise ValueError(f"Checkpoint method mismatch for {checkpoint}.")
         if manifest.get("session_fingerprint") != session.session_fingerprint:
@@ -1065,6 +1215,12 @@ def save_real_notebook_results(session: RealResultArchiveSession) -> Path:
                     "method": method,
                     "runtime_seconds": runtime,
                     "final_online_preupdate_residual": float(residual[-1]),
+                    "position_rms_shift_px": float(
+                        manifest["position_refinement"]["rms_shift_px"]
+                    ),
+                    "position_max_shift_px": float(
+                        manifest["position_refinement"]["max_shift_px"]
+                    ),
                     "num_epochs": int(session.dataset_config.num_epochs),
                     "batch_size": int(session.dataset_config.batch_size),
                     "seed": int(session.dataset_config.seed),
@@ -1104,6 +1260,8 @@ def save_real_notebook_results(session: RealResultArchiveSession) -> Path:
                 "method",
                 "runtime_seconds",
                 "final_online_preupdate_residual",
+                "position_rms_shift_px",
+                "position_max_shift_px",
                 *session.final_metric_keys,
                 "num_epochs",
                 "batch_size",
@@ -1162,7 +1320,7 @@ def save_real_notebook_results(session: RealResultArchiveSession) -> Path:
         git_status = _git_output(session.project_root, "status", "--porcelain")
         run_manifest = {
             "archive_kind": REAL_ARCHIVE_KIND,
-            "schema_version": ARCHIVE_SCHEMA_VERSION,
+            "schema_version": REAL_ARCHIVE_SCHEMA_VERSION,
             "experiment_name": session.experiment_name,
             "run_id": session.run_id,
             "session_fingerprint": session.session_fingerprint,
@@ -1183,6 +1341,9 @@ def save_real_notebook_results(session: RealResultArchiveSession) -> Path:
             "snapshot_epochs": list(session.expected_snapshot_epochs),
             "snapshots": snapshot_records,
             "dataset_config": session.dataset_config,
+            "dataset_positions_px_role": (
+                "Initial mean-centered measured scan positions in (y, x) order."
+            ),
             "run_metadata": session.run_metadata,
             "alignment": {
                 "scale_amplitude": session.alignment_scale_amplitude,
@@ -1222,7 +1383,7 @@ def save_real_notebook_results(session: RealResultArchiveSession) -> Path:
 
         validation_report = {
             "archive_kind": REAL_ARCHIVE_KIND,
-            "schema_version": ARCHIVE_SCHEMA_VERSION,
+            "schema_version": REAL_ARCHIVE_SCHEMA_VERSION,
             "status": "passed",
             "methods": list(session.method_order),
             "method_count": len(session.method_order),
@@ -1240,7 +1401,8 @@ def save_real_notebook_results(session: RealResultArchiveSession) -> Path:
                 "online residual histories contain every configured epoch",
                 "optional sampled and final metrics have the configured cadence",
                 "configured reconstruction snapshots are complete and validated",
-                "selected indices, positions, probe, pixel size, and wavelength saved",
+                "initial and per-method refined positions are saved in (y, x) order",
+                "selected indices, probe, pixel size, and wavelength are saved",
                 "source HDF5 is content-addressed but diffraction data is not duplicated",
                 "NPZ payloads round-trip exactly with allow_pickle=False",
                 "all archived artifacts are covered by SHA-256 checksums",
@@ -1265,7 +1427,7 @@ def save_real_notebook_results(session: RealResultArchiveSession) -> Path:
             temporary_directory / "release_manifest.json",
             {
                 "archive_kind": REAL_ARCHIVE_KIND,
-                "schema_version": ARCHIVE_SCHEMA_VERSION,
+                "schema_version": REAL_ARCHIVE_SCHEMA_VERSION,
                 "created_utc": datetime.now(timezone.utc).isoformat(),
                 "artifact_count": len(artifact_hashes),
                 "artifacts": artifact_hashes,
@@ -1297,6 +1459,8 @@ def validate_real_results_archive(directory: Path) -> dict[str, Any]:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if manifest.get("archive_kind") != REAL_ARCHIVE_KIND:
         raise ValueError(f"Not a real-data result archive: {directory}")
+    if manifest.get("schema_version") != REAL_ARCHIVE_SCHEMA_VERSION:
+        raise ValueError(f"Unsupported real-data archive schema: {directory}")
     run_id = manifest.get("run_id")
     if success_path.read_text(encoding="utf-8") != f"{run_id}\n":
         raise RuntimeError("Archive success marker does not match run_manifest.json.")
@@ -1346,6 +1510,8 @@ def validate_real_results_archive(directory: Path) -> dict[str, Any]:
         required_keys = {
             "object",
             "probe",
+            "positions_px",
+            "position_shifts_px",
             "aligned_object",
             "aligned_probe",
             "residual_history",
@@ -1471,6 +1637,28 @@ def validate_real_results_archive(directory: Path) -> dict[str, Any]:
         for key in metadata.files:
             if _sha256_array(metadata[key]) != dataset_hashes[key].get("sha256"):
                 raise RuntimeError(f"Dataset array hash verification failed for {key}.")
+        initial_positions = np.array(metadata["positions_px"], copy=True)
+    for method in CANONICAL_REAL_METHODS:
+        stem = stems[method]
+        reconstruction_path = directory / "reconstructions" / f"{stem}.npz"
+        refined_positions, _ = _validate_saved_position_arrays(
+            reconstruction_path,
+            expected_count=len(initial_positions),
+            initial_positions=initial_positions,
+        )
+        if expected_snapshot_epochs:
+            final_snapshot_path = (
+                directory
+                / "snapshots"
+                / stem
+                / _snapshot_filename(expected_snapshot_epochs[-1])
+            )
+            with np.load(final_snapshot_path, allow_pickle=False) as final_snapshot:
+                if not np.array_equal(
+                    final_snapshot["positions_px"],
+                    refined_positions,
+                ):
+                    raise ValueError(f"Final snapshot positions do not match {method}.")
     required_artifacts = [
         "tables/summary.csv",
         "curves/residual_history.csv",
@@ -1505,6 +1693,7 @@ def validate_real_results_archive(directory: Path) -> dict[str, Any]:
 
 __all__ = [
     "CANONICAL_REAL_METHODS",
+    "REAL_ARCHIVE_SCHEMA_VERSION",
     "REAL_SNAPSHOT_KIND",
     "RealResultArchiveSession",
     "save_real_reconstruction_snapshot",

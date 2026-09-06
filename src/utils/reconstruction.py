@@ -19,7 +19,10 @@ from ptychi.utils import get_suggested_object_size
 ProgressCallback = Callable[[int, float, Mapping[str, float]], None]
 TaskMetricFunction = Callable[[PtychographyTask], Mapping[str, float]]
 FinalMetricFunction = TaskMetricFunction
-StateSnapshotCallback = Callable[[int, np.ndarray, np.ndarray], None]
+StateSnapshotCallback = Callable[
+    [int, np.ndarray, np.ndarray, np.ndarray],
+    None,
+]
 
 
 def _coerce_finite_metric_mapping(
@@ -38,9 +41,7 @@ def _coerce_finite_metric_mapping(
         try:
             numeric_value = float(value)
         except (TypeError, ValueError) as error:
-            raise TypeError(
-                f"{source} metric values must be real numbers."
-            ) from error
+            raise TypeError(f"{source} metric values must be real numbers.") from error
         if not math.isfinite(numeric_value):
             raise ValueError(f"{source} metric values must be finite.")
         metrics[name] = numeric_value
@@ -73,6 +74,7 @@ def make_negative_complex_gaussian_object_init(
 class ReconstructionResult:
     object: np.ndarray
     probe: np.ndarray
+    positions_px: np.ndarray
     residual_history: np.ndarray
     metric_epochs: np.ndarray
     metric_history: dict[str, np.ndarray]
@@ -226,6 +228,14 @@ def build_ptychi_options(
     remove_object_probe_ambiguity: bool = False,
     probe_update_start_epoch: int | None = None,
     probe_update_stride: int | None = None,
+    optimize_positions: bool = False,
+    position_step_size: float = 0.3,
+    position_update_start_epoch: int = 0,
+    position_update_stop_epoch: int | None = None,
+    position_update_stride: int = 1,
+    position_constrain_mean: bool = True,
+    position_clip_update_by_mad: bool = False,
+    position_update_max_px: float | None = 0.1,
 ) -> Any:
     patch_ptychi_compatibility()
     set_random_seed(seed)
@@ -275,7 +285,25 @@ def build_ptychi_options(
 
     options.probe_position_options.position_x_px = positions_px[:, 1]
     options.probe_position_options.position_y_px = positions_px[:, 0]
-    options.probe_position_options.optimizable = False
+    options.probe_position_options.optimizable = optimize_positions
+    options.probe_position_options.optimizer = api.Optimizers.SGD
+    options.probe_position_options.step_size = position_step_size
+    options.probe_position_options.optimizer_params = {}
+    position_plan = options.probe_position_options.optimization_plan
+    position_plan.start = position_update_start_epoch
+    position_plan.stop = position_update_stop_epoch
+    position_plan.stride = position_update_stride
+    position_plan.step_size_scheduler_class = None
+    position_plan.step_size_scheduler_options = {}
+    options.probe_position_options.constrain_position_mean = position_constrain_mean
+    correction_options = options.probe_position_options.correction_options
+    correction_options.correction_type = api.PositionCorrectionTypes.GRADIENT
+    correction_options.differentiation_method = (
+        api.ImageGradientMethods.FOURIER_DIFFERENTIATION
+    )
+    correction_options.clip_update_magnitude_by_mad = position_clip_update_by_mad
+    correction_options.update_magnitude_limit = position_update_max_px
+    options.probe_position_options.affine_transform_constraint.enabled = False
 
     options.reconstructor_options.default_device = device
     options.reconstructor_options.default_dtype = api.Dtypes.FLOAT32
@@ -316,11 +344,11 @@ def run_reconstruction_task(
     Set ``include_initial_metrics`` to sample those functions once at epoch
     zero, before any reconstruction update; online residuals still begin at
     epoch one.
-    ``chunk_epochs=True`` groups task calls between reporting/snapshot events,
-    preserving the server real-data execution schedule. The default retains
-    the per-epoch calls used by the synthetic experiments.
+    ``chunk_epochs=True`` preserves the real-data task calls between reporting
+    and snapshot events. The default preserves the synthetic per-epoch calls.
     ``snapshot_callback`` receives independent CPU copies of the completed
-    object and probe at each positive ``snapshot_stride`` and the final epoch.
+    object, probe, and ``(y, x)`` scan positions at each positive
+    ``snapshot_stride`` and the final epoch.
     """
     if not isinstance(chunk_epochs, bool):
         raise TypeError("chunk_epochs must be boolean.")
@@ -415,18 +443,18 @@ def run_reconstruction_task(
             epochs = sorted(event_epochs)
         else:
             epochs = range(1, num_epochs + 1)
+
         completed_epochs = 0
         for epoch in epochs:
             task.run(n_epochs=epoch - completed_epochs)
             completed_epochs = epoch
             report_due = reporting_enabled and (
-                epoch == 1
-                or epoch % metric_stride == 0
-                or epoch == num_epochs
+                epoch == 1 or epoch % metric_stride == 0 or epoch == num_epochs
             )
             snapshot_due = snapshot_callback is not None and (
                 epoch % snapshot_stride == 0 or epoch == num_epochs
             )
+
             if not report_due and not snapshot_due:
                 continue
 
@@ -449,7 +477,16 @@ def run_reconstruction_task(
                     task.get_data_to_cpu("probe", as_numpy=True),
                     copy=True,
                 )
-                snapshot_callback(epoch, object_snapshot, probe_snapshot)
+                positions_snapshot = np.array(
+                    task.get_data_to_cpu("probe_positions", as_numpy=True),
+                    copy=True,
+                )
+                snapshot_callback(
+                    epoch,
+                    object_snapshot,
+                    probe_snapshot,
+                    positions_snapshot,
+                )
 
     final_metrics: dict[str, float] = {}
     if final_metric_function is not None:
@@ -465,6 +502,7 @@ def run_reconstruction_task(
     return ReconstructionResult(
         object=task.get_data_to_cpu("object", as_numpy=True),
         probe=task.get_data_to_cpu("probe", as_numpy=True),
+        positions_px=task.get_data_to_cpu("probe_positions", as_numpy=True),
         residual_history=residual_history,
         metric_epochs=np.asarray(metric_epochs, dtype=np.int64),
         metric_history={
