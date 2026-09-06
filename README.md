@@ -30,14 +30,14 @@ Notebook settings near the top specify the seeds and all method parameters.
 | Study | Notebooks | Device | Settings |
 |---|---|---|---|
 | Overlap | [examples/synthetic](examples/synthetic) | Apple MPS | 50%, 62.5%, 75% overlap; eta=0.05; 3,000 epochs; batch 81 |
-| Noise | [examples/synthetic_noise](examples/synthetic_noise) | NVIDIA CUDA | 75% overlap; eta=0.05, 0.5, 1; 3,000 epochs; batch 81 |
+| Noise | [examples/synthetic_noise](examples/synthetic_noise) | NVIDIA CUDA | 75% overlap; eta=0.05, 0.1, 0.2; 3,000 epochs; batch 81 |
 | Real data | [examples/real_data](examples/real_data) | NVIDIA CUDA | Full/half chip and full/quarter test pattern |
 
 The overlap notebooks retain the local MPS setup; the noise and real-data
 notebooks explicitly select CUDA. They fail if their requested device is
-unavailable. In CUDA notebooks, `SMOKE_TEST = True` runs one epoch per method
-before committing to the full experiment. Real-data smoke runs use one batch;
-synthetic smoke runs retain the full generated dataset.
+unavailable. In the eta=0.1/0.2 noise and real-data notebooks, `SMOKE_TEST = True`
+runs one epoch per method before committing to the full experiment. Real-data
+smoke runs use one batch; synthetic smoke runs retain the full generated dataset.
 
 The synthetic studies use a 1,024 × 1,024 object, a 128 × 128 probe,
 position/data/reconstruction seeds 42/42/21, and scaled-Poisson measurements
@@ -69,15 +69,21 @@ The saved summary values are collected in three files:
 
 Each row retains the experiment, original run ID, backend, method, settings,
 and full-precision summary values. These are existing results, not reruns of
-the cleaned code. The eta=0.05 noise reference is the same MPS run as the 75%
-overlap reference; the corresponding CUDA notebook prepares a future rerun.
-There are nine unique recorded runs across the ten study configurations.
+the cleaned code. All three noise levels are independent CUDA runs, including
+eta=0.05; the MPS overlap results remain a separate study. There are ten unique
+recorded runs across the ten study configurations.
+
+The noise runs use the same method settings across eta=0.05, 0.1, and 0.2:
+object/probe alphas (0.1, 0.1) for rPIE, (0.01, 0.01) for GM-rPIE, and
+(0.05, 0.01) for GM-MAGPIE, with Poisson LSQML scaler 1. GM-MAGPIE has the
+lowest value for all six recorded final quality metrics at each noise level.
 
 Synthetic summaries distinguish frozen noisy/clean amplitude MSE from the
 online pre-update residual. Real summaries contain the online residual.
 Timings span different hardware and measurement procedures: the original MPS
-runs did not explicitly synchronize the accelerator, while CUDA runs did.
-They should not be combined into a controlled runtime comparison. Fixed seeds
+runs and eta=0.05 CUDA noise run did not explicitly synchronize the accelerator;
+the eta=0.1/0.2 noise runs and real-data CUDA runs did. They should not be
+combined into a controlled runtime comparison. Fixed seeds
 do not guarantee bitwise equality across accelerators or MPS reruns.
 
 Running a notebook creates a new full archive under `results/notebook_exports/`,
@@ -88,9 +94,14 @@ The notebooks include preserved outputs from the original runs, including plots
 and printed metrics. They have not been rerun after code cleanup. Personal paths
 in text logs are replaced with `<original-project>`.
 
-The CUDA eta=0.05 notebook has no saved outputs; use the linked MPS baseline.
-The quarter test-pattern notebook contains a partial saved history, stopping at
-GM-MAGPIE epoch 200; its complete 300-epoch result is in `results/real_data.csv`.
+The CUDA eta=0.05 notebook includes final summary, metric-curve, and object/probe
+displays regenerated from its verified original archive using the saved arrays.
+No reconstruction was rerun; early execution logs were not saved. The eta=0.1
+and eta=0.2 notebooks retain their original outputs.
+The quarter test-pattern notebook includes final displays regenerated from its
+verified complete 300-epoch archive, filling the missing epoch-300 snapshot,
+summary, residual curve, and object/probe comparisons. Reconstruction was not
+rerun; the restoration is recorded inside the notebook.
 The 62.5% overlap notebook's original source differs from its archived source
 hash, although displayed summary values match the saved results. These cases
 are also noted inside the relevant notebooks.
