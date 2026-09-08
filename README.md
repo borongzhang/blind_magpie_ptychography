@@ -30,7 +30,7 @@ the notebooks fail early when a GPU is unavailable.
 
 | Study | Notebooks | Settings |
 |---|---|---|
-| Overlap | [examples/synthetic](examples/synthetic) | 62.5%, 75%, 87.5% overlap; eta=0.05; 3,000 epochs; batch 81 |
+| Overlap | [examples/synthetic](examples/synthetic) | 62.5%, 75%, 87.5% overlap; eta=0.05; 12,000 / 3,000 / 500 epochs, respectively; batch 81 |
 | Noise | [examples/synthetic_noise](examples/synthetic_noise), plus the [shared eta=0.05 baseline](examples/synthetic/synthetic_overlap_075_eta_0p05.ipynb) | 75% overlap; eta=0.05, 0.2, 0.4; 3,000 epochs; batch 81 |
 | Real data | [examples/real_data](examples/real_data) | Full/half chip and full/one-third test pattern; refined scan positions |
 
@@ -40,12 +40,25 @@ only once in the notebook tree.
 
 The synthetic studies use a 1,024 × 1,024 object, a 128 × 128 probe,
 position/data/reconstruction seeds 42/42/21, and scaled-Poisson measurements
-`Y = eta * Poisson(I / eta)`. Eta is not a noise percentage. All synthetic
-studies use object/probe alphas (0.1, 0.1) for rPIE, (0.01, 0.01) for GM-rPIE,
-and (0.05, 0.01) for GM-MAGPIE. Synthetic LSQML uses a Gaussian reconstruction
-likelihood with sigma=0.5 and object/probe optimal-step multipliers 0.9/0.9;
-its outer SGD step sizes are 1.0/1.0. Scan positions remain fixed in the
-synthetic reconstructions.
+`Y = eta * Poisson(I / eta)`. Eta is not a noise percentage. The overlap
+studies use the following epoch budgets and object/probe regularization
+pairs; all use batch 81 and initial-probe defocus -0.5 mm.
+
+| Overlap | Epochs | rPIE alphas | GM-rPIE alphas | GM-MAGPIE alphas |
+|---|---:|---|---|---|
+| 62.5% | 12,000 | (0.1, 0.1) | (0.01, 0.01) | (0.02, 0.01) |
+| 75% | 3,000 | (0.1, 0.1) | (0.01, 0.01) | (0.05, 0.01) |
+| 87.5% | 500 | (0.2, 0.2) | (0.02, 0.02) | (0.05, 0.02) |
+
+The noise study uses the 75% row's settings at every noise level. The four
+methods share the data, initialization, and epoch budget within each case.
+Epoch budgets and some regularization parameters differ across overlaps,
+so this comparison does not isolate overlap alone or provide an equal-work
+benchmark. Synthetic LSQML uses a Gaussian reconstruction likelihood with
+sigma=0.5 and object/probe optimal-step multipliers 0.9/0.9; its outer SGD
+step sizes are 1.0/1.0. Frozen/truth metrics are sampled at initialization,
+epoch 1, every 20 epochs, and the final epoch. Scan positions remain fixed
+in the synthetic reconstructions.
 
 | Real-data notebook | Patterns | Detector | Batch | Epochs |
 |---|---:|---:|---:|---:|
@@ -82,10 +95,14 @@ Full-precision summaries retain the original run IDs, backends, and settings:
 - [noise.csv](results/noise.csv)
 - [real_data.csv](results/real_data.csv), including RMS and maximum position shifts
 
-The notebooks and CSVs come from the completed server runs in
-`magpie_from_pace_20260906_145649`. Notebook code and source implementations
-were checked against their archived manifests. All original notebook outputs
-are preserved, including synthetic metric/object/probe plots, real-data
+The 62.5% and 87.5% overlap notebooks and CSV rows come from completed runs
+`20260907T212000_866019Z` and `20260908T193912_544728Z`, respectively, in
+`magpie_from_pace_20260908_155813`. The retained 75% baseline, noise, and real-data
+results come from `magpie_from_pace_20260906_145649`. Notebook settings were
+checked against their archived manifests. The new overlap runs use the
+same archived synthetic source implementations as the retained baseline;
+the shared release also supports the real-data settings. All original notebook
+outputs are preserved, including synthetic metric/object/probe plots, real-data
 snapshots, and final scan-position-correction plots. No reconstruction or
 plot was rerun during cleanup. Server paths in text logs are replaced with
 `<original-project>`. The synthetic LSQML defaults are written explicitly
