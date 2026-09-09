@@ -95,19 +95,6 @@ Full-precision summaries retain the original run IDs, backends, and settings:
 - [noise.csv](results/noise.csv)
 - [real_data.csv](results/real_data.csv), including RMS and maximum position shifts
 
-The 62.5% and 87.5% overlap notebooks and CSV rows come from completed runs
-`20260907T212000_866019Z` and `20260908T193912_544728Z`, respectively, in
-`magpie_from_pace_20260908_155813`. The retained 75% baseline, noise, and real-data
-results come from `magpie_from_pace_20260906_145649`. Notebook settings were
-checked against their archived manifests. The new overlap runs use the
-same archived synthetic source implementations as the retained baseline;
-the shared release also supports the real-data settings. All original notebook
-outputs are preserved, including synthetic metric/object/probe plots, real-data
-snapshots, and final scan-position-correction plots. No reconstruction or
-plot was rerun during cleanup. Server paths in text logs are replaced with
-`<original-project>`. The synthetic LSQML defaults are written explicitly
-in the notebooks with their recorded values.
-
 Synthetic summaries distinguish frozen noisy/clean amplitude MSE from the
 online pre-update residual. Real-data summaries report the online residual;
 they do not provide a truth-based reconstruction error or measured resolution.
@@ -131,4 +118,3 @@ assets/       synthetic inputs and measured-data instructions
 results/      three saved summary tables
 ```
 
-No license was specified in the original project.
