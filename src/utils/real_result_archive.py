@@ -24,7 +24,6 @@ from utils.result_archive import (
     _atomic_write_text,
     _canonical_json,
     _git_output,
-    _notebook_source_sha256,
     _pip_freeze,
     _sha256_array,
     _sha256_file,
@@ -431,6 +430,21 @@ def _validate_saved_position_arrays(
     return positions, shifts
 
 
+def _notebook_bytes_source_sha256(content: bytes) -> str:
+    """Same semantic digest as result_archive, from one consistent byte snapshot."""
+    document = json.loads(content)
+    cells = []
+    for cell in document.get("cells", []):
+        source = cell.get("source", "")
+        cells.append({
+            "cell_type": str(cell.get("cell_type", "")),
+            "source": "".join(source) if isinstance(source, list) else str(source),
+        })
+    return hashlib.sha256(_canonical_json({
+        "nbformat": int(document.get("nbformat", 0)), "cells": cells,
+    }).encode("utf-8")).hexdigest()
+
+
 @dataclass
 class RealResultArchiveSession:
     """Configuration for restartable, immutable real-data result exports.
@@ -490,6 +504,32 @@ class RealResultArchiveSession:
             dtype=bool,
         )
         self._validate_session()
+        # The files on disk can change while Jupyter is running. Capture their
+        # exact bytes once; source provenance must describe one session, not the
+        # time at which each method happens to finish.
+        self._source_bytes = {
+            name: path.read_bytes()
+            for name, path in sorted(self.source_paths.items())
+            if path != self.source_data_path
+        }
+        self._source_records = {}
+        self._source_content_hashes = {}
+        for name, content in self._source_bytes.items():
+            record = {
+                "path": _relative_or_absolute(self.source_paths[name], self.project_root),
+                "bytes": len(content),
+                "sha256": hashlib.sha256(content).hexdigest(),
+            }
+            source_hash = record["sha256"]
+            if name == "notebook":
+                source_hash = _notebook_bytes_source_sha256(content)
+                record["semantic_source_sha256"] = source_hash
+            self._source_records[name] = record
+            self._source_content_hashes[name] = source_hash
+        self._initial_identity_json = _canonical_json(self._identity_payload())
+        self._initial_fingerprint = hashlib.sha256(
+            self._initial_identity_json.encode("utf-8")
+        ).hexdigest()
 
     @property
     def checkpoint_root(self) -> Path:
@@ -517,9 +557,8 @@ class RealResultArchiveSession:
             )
         )
 
-    @property
-    def session_fingerprint(self) -> str:
-        payload = {
+    def _identity_payload(self) -> dict[str, Any]:
+        return {
             "archive_kind": REAL_ARCHIVE_KIND,
             "schema_version": REAL_ARCHIVE_SCHEMA_VERSION,
             "experiment_name": self.experiment_name,
@@ -545,15 +584,7 @@ class RealResultArchiveSession:
             "source_paths": {
                 name: str(path) for name, path in sorted(self.source_paths.items())
             },
-            "source_content_sha256": {
-                name: (
-                    _notebook_source_sha256(path)
-                    if name == "notebook"
-                    else _sha256_file(path)
-                )
-                for name, path in sorted(self.source_paths.items())
-                if path != self.source_data_path
-            },
+            "source_content_sha256": self._source_content_hashes,
             "selected_pattern_indices_sha256": _sha256_array(
                 self.dataset.selected_pattern_indices
             ),
@@ -561,7 +592,60 @@ class RealResultArchiveSession:
             "probe_initial_sha256": _sha256_array(self.dataset.probe_init),
             "alignment_fit_mask_sha256": _sha256_array(self.alignment_fit_mask),
         }
-        return hashlib.sha256(_canonical_json(payload).encode("utf-8")).hexdigest()
+
+    @property
+    def session_fingerprint(self) -> str:
+        if not hasattr(self, "_initial_identity_json"):
+            raise ValueError(
+                "This live session predates the source-identity fix. Restart the "
+                "kernel, then run the notebook from the beginning."
+            )
+        for name, expected in self._source_content_hashes.items():
+            if name != "notebook" and _sha256_file(self.source_paths[name]) != expected:
+                raise ValueError(
+                    f"Non-notebook source changed during this archive session: {name}. "
+                    "Keep scientific code fixed until this run has finished."
+                )
+        if _canonical_json(self._identity_payload()) != self._initial_identity_json:
+            raise ValueError(
+                "Archive session configuration or initial arrays changed after "
+                "session creation. Start a separate run for changed settings."
+            )
+        return self._initial_fingerprint
+
+    def _persist_identity(self) -> None:
+        fingerprint = self.session_fingerprint
+        destination = self.checkpoint_root / "_session"
+        if destination.exists():
+            _verify_checksum_file(destination)
+            identity = json.loads((destination / "identity.json").read_text())
+            if (identity.get("session_fingerprint") != fingerprint or
+                    _canonical_json(identity.get("fingerprint_payload")) != self._initial_identity_json):
+                raise ValueError("Existing checkpoint session has a different identity.")
+            return
+        self.checkpoint_root.mkdir(parents=True, exist_ok=True)
+        temporary = Path(tempfile.mkdtemp(prefix=".session.", dir=self.checkpoint_root))
+        try:
+            source_records = {}
+            for index, (name, content) in enumerate(self._source_bytes.items()):
+                relative = f"source/{index:04d}_{self.source_paths[name].name}"
+                target = temporary / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(content)
+                source_records[name] = {**self._source_records[name], "archive": relative}
+            _write_json(temporary / "identity.json", {
+                "kind": "magpie-real-data-session-identity",
+                "session_fingerprint": fingerprint,
+                "fingerprint_payload": json.loads(self._initial_identity_json),
+                "source_files": source_records,
+                "capture_point": getattr(self, "_source_capture_point", "archive session creation"),
+            })
+            _write_checksum_file(temporary)
+            _verify_checksum_file(temporary)
+            temporary.replace(destination)
+        except BaseException:
+            shutil.rmtree(temporary, ignore_errors=True)
+            raise
 
     def _validate_session(self) -> None:
         if self.method_order != CANONICAL_REAL_METHODS:
@@ -922,6 +1006,7 @@ class RealResultArchiveSession:
         alignment: Any,
     ) -> Path:
         """Atomically save one method; an existing checkpoint is never replaced."""
+        self._persist_identity()
         if method not in self.method_order:
             raise ValueError(f"Unknown method {method!r}.")
         snapshot_records: list[dict[str, Any]] = []
@@ -1109,24 +1194,12 @@ def _method_snapshot_records(
 
 
 def _source_file_records(session: RealResultArchiveSession) -> dict[str, Any]:
-    cache: dict[Path, str] = {}
-
-    def digest(path: Path) -> str:
-        if path not in cache:
-            cache[path] = _sha256_file(path)
-        return cache[path]
-
-    records = {
-        name: {
-            "path": _relative_or_absolute(path, session.project_root),
-            "bytes": path.stat().st_size,
-            "sha256": digest(path),
-        }
-        for name, path in sorted(session.source_paths.items())
+    records = {name: dict(record) for name, record in session._source_records.items()}
+    records["source_hdf5"] = {
+        "path": _relative_or_absolute(session.source_data_path, session.project_root),
+        "bytes": session.source_data_path.stat().st_size,
+        "sha256": _sha256_file(session.source_data_path),
     }
-    records["notebook"]["semantic_source_sha256"] = _notebook_source_sha256(
-        session.notebook_path
-    )
     return records
 
 
@@ -1134,6 +1207,7 @@ def save_real_notebook_results(session: RealResultArchiveSession) -> Path:
     """Assemble all four immutable checkpoints into one verified run archive."""
     if not isinstance(session, RealResultArchiveSession):
         raise TypeError("session must be a RealResultArchiveSession.")
+    session._persist_identity()
     final_directory = session.final_directory
     if final_directory.exists():
         raise FileExistsError(
@@ -1305,6 +1379,7 @@ def save_real_notebook_results(session: RealResultArchiveSession) -> Path:
             dataset_payload,
         )
 
+        shutil.copytree(session.checkpoint_root / "_session", temporary_directory / "session")
         source_records = _source_file_records(session)
         source_hdf5_hash = source_records.get("source_hdf5", {}).get("sha256")
         if source_hdf5_hash is None:
@@ -1377,7 +1452,11 @@ def save_real_notebook_results(session: RealResultArchiveSession) -> Path:
                 "status_porcelain": [] if not git_status else git_status.splitlines(),
             },
             "source_files": source_records,
+            "source_capture_point": getattr(session, "_source_capture_point", "archive session creation"),
+            "session_identity_archive": "session/identity.json",
         }
+        if hasattr(session, "_recovery_provenance"):
+            run_manifest["recovery"] = session._recovery_provenance
         _write_json(temporary_directory / "run_manifest.json", run_manifest)
         _atomic_write_text(temporary_directory / "environment.txt", _pip_freeze())
 
@@ -1467,6 +1546,30 @@ def validate_real_results_archive(directory: Path) -> dict[str, Any]:
     if tuple(manifest.get("method_order", ())) != CANONICAL_REAL_METHODS:
         raise ValueError("Archive does not contain the canonical four-method order.")
     _verify_checksum_file(directory)
+    if manifest.get("session_identity_archive") is not None:
+        if manifest["session_identity_archive"] != "session/identity.json":
+            raise ValueError("Unexpected session identity path.")
+        session_directory = directory / "session"
+        _verify_checksum_file(session_directory)
+        identity = json.loads((session_directory / "identity.json").read_text())
+        identity_hash = hashlib.sha256(
+            _canonical_json(identity["fingerprint_payload"]).encode("utf-8")
+        ).hexdigest()
+        if identity_hash != identity.get("session_fingerprint") or identity_hash != manifest.get("session_fingerprint"):
+            raise ValueError("Archived session identity does not match the run fingerprint.")
+        if set(identity.get("source_files", {})) != set(identity["fingerprint_payload"]["source_content_sha256"]):
+            raise ValueError("Archived source inventory differs from session identity.")
+        for name, record in identity.get("source_files", {}).items():
+            relative = PurePosixPath(record["archive"])
+            if relative.is_absolute() or ".." in relative.parts:
+                raise ValueError("Unsafe archived source path.")
+            path = session_directory / relative
+            if path.stat().st_size != record["bytes"] or _sha256_file(path) != record["sha256"]:
+                raise ValueError(f"Archived session source does not match: {name}")
+            digest = (_notebook_bytes_source_sha256(path.read_bytes())
+                      if name == "notebook" else record["sha256"])
+            if digest != identity["fingerprint_payload"]["source_content_sha256"].get(name):
+                raise ValueError(f"Archived source differs from fingerprint: {name}")
 
     snapshot_every = manifest.get("snapshot_every")
     if snapshot_every is None:
@@ -1507,6 +1610,8 @@ def validate_real_results_archive(directory: Path) -> dict[str, Any]:
         method_manifest = json.loads(method_manifest_path.read_text(encoding="utf-8"))
         if method_manifest.get("method") != method:
             raise ValueError(f"Method manifest mismatch for {method}.")
+        if method_manifest.get("session_fingerprint") != manifest.get("session_fingerprint"):
+            raise ValueError(f"Method fingerprint differs from archived run: {method}.")
         required_keys = {
             "object",
             "probe",
