@@ -32,9 +32,9 @@ the notebooks fail early when a GPU is unavailable.
 |---|---|---|
 | Overlap | [examples/synthetic](examples/synthetic) | 62.5%, 75%, 87.5% overlap; eta=0.05; 12,000 / 3,000 / 500 epochs, respectively; batch 81 |
 | Noise | [examples/synthetic_noise](examples/synthetic_noise), plus the [shared eta=0.05 baseline](examples/synthetic/synthetic_overlap_075_eta_0p05.ipynb) | 75% overlap; eta=0.05, 0.2, 0.4; 3,000 epochs; batch 81 |
-| Real data | [examples/real_data](examples/real_data) | Full/half chip and full/one-third test pattern; refined scan positions |
+| Real data | [examples/real_data](examples/real_data) | Full chip and full test pattern; 100 epochs; refined scan positions |
 
-The nine notebooks cover nine unique recorded runs. The 75%-overlap,
+The seven notebooks cover seven unique recorded runs. The 75%-overlap,
 eta=0.05 CUDA run is shared by the overlap and noise comparisons and appears
 only once in the notebook tree.
 
@@ -62,20 +62,19 @@ in the synthetic reconstructions.
 
 | Real-data notebook | Patterns | Detector | Batch | Epochs |
 |---|---:|---:|---:|---:|
-| [chip_full.ipynb](examples/real_data/chip_full.ipynb) | 812 | 512 × 512 | 29 | 50 |
-| [chip_half_scan.ipynb](examples/real_data/chip_half_scan.ipynb) | 406 | 512 × 512 | 29 | 100 |
-| [test_pattern_full.ipynb](examples/real_data/test_pattern_full.ipynb) | 14,640 | 256 × 256 | 244 | 50 |
-| [test_pattern_third_scan.ipynb](examples/real_data/test_pattern_third_scan.ipynb) | 4,880 | 256 × 256 | 244 | 100 |
+| [chip_full.ipynb](examples/real_data/chip_full.ipynb) | 812 | 512 × 512 | 29 | 100 |
+| [test_pattern_full.ipynb](examples/real_data/test_pattern_full.ipynb) | 14,640 | 256 × 256 | 244 | 100 |
 
-The measured-data subsets are sampled across the full scan using seed 42.
+The real-data runs use seed 42.
 The full test-pattern notebook retains 14,640 of 14,641 patterns to form
 complete batches. All four real methods refine scan positions from the
 first epoch (zero-based start 0), using gradient correction, step size 1,
 a 50-pixel cap per coordinate per update, and a fixed position mean.
 Gaussian LSQML uses sigma=0.5 and tied optimal-step multipliers 0.5/0.5,
 with outer SGD step sizes 1.0/1.0. Snapshots include complex object/probe
-fields and refined positions every 10 epochs. Complete method settings
-remain in each notebook.
+fields and refined positions every 10 epochs. Training displays show object
+magnitude and phase side by side. Complete method settings remain in each
+notebook.
 
 All notebooks support `SMOKE_TEST = True`. Synthetic smoke runs use one
 epoch on the full generated dataset; real-data smoke runs use one epoch and
@@ -113,7 +112,7 @@ and periodic snapshots. Generated archives are ignored by Git.
 
 ```text
 src/          shared algorithms, simulation, data loading, metrics, and saving
-examples/     five synthetic and four real-data notebooks with outputs
+examples/     five synthetic and two real-data notebooks with outputs
 assets/       synthetic inputs and measured-data instructions
 results/      three saved summary tables
 ```
