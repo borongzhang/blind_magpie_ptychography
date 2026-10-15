@@ -1,7 +1,6 @@
 # MAGPIE for blind ptychography
 
-Code and experiments for [Stochastic Multigrid Method for Blind Ptychographic
-Phase Retrieval](https://arxiv.org/abs/2511.01793), by Borong Zhang, Junjing Deng,
+Code and experiments for [Stochastic Multigrid Method for Blind Ptychography](https://arxiv.org/abs/2511.01793), by Borong Zhang, Junjing Deng,
 Yi Jiang, and Zichao Wendy Di.
 
 The notebooks compare rPIE, GM-rPIE, GM-MAGPIE, and LSQML using shared
