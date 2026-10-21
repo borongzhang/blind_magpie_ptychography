@@ -79,11 +79,6 @@ All notebooks support `SMOKE_TEST = True`. Synthetic smoke runs use one
 epoch on the full generated dataset; real-data smoke runs use one epoch and
 one minibatch. Smoke archives have separate `_smoke` directories.
 
-## Probe synthesis safeguard
-
-GM-rPIE and GM-MAGPIE use a 1% relative denominator floor in their shared
-probe synthesis. 
-
 ## Data
 
 The two synthetic input images are included in `assets/`. Supply the measured
