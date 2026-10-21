@@ -404,9 +404,14 @@ class BlindMAGPIEReconstructor(
             object_weight,
             first_mode_only=True,
         ).sum(dim=0)
+        # Limit amplification from small positive row sums while retaining
+        # the original zero correction at nonpositive entries. The 1% floor
+        # is relative to this minibatch and needs no additional probe shifts.
+        probe_floor = 0.01 * probe_denominator.clamp_min(0).amax()
+        safe_probe_denominator = probe_denominator.clamp_min(probe_floor)
         probe_update = torch.where(
             probe_denominator > 0,
-            self._divide(probe_numerator, probe_denominator),
+            self._divide(probe_numerator, safe_probe_denominator),
             torch.zeros_like(probe_numerator),
         )
         probe.set_data(probe_update, slicer=0, op="add")
