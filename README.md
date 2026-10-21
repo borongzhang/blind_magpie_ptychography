@@ -79,6 +79,41 @@ All notebooks support `SMOKE_TEST = True`. Synthetic smoke runs use one
 epoch on the full generated dataset; real-data smoke runs use one epoch and
 one minibatch. Smoke archives have separate `_smoke` directories.
 
+## Probe synthesis safeguard
+
+GM-rPIE and GM-MAGPIE use a 1% relative denominator floor in their shared
+probe synthesis. For a minibatch $B$, define
+
+$$
+w_k=|\widetilde{\mathbf O}_k^{(j)}|^2,\qquad
+\mathbf b=\sum_{k\in B}S_k^{\mathrm H}
+\left[w_k\odot(\widetilde{\mathbf P}_k^{(j)}-\mathbf P_k^{(j)})\right],
+$$
+
+$$
+\mathbf q=\left[\operatorname{Re}\sum_{k\in B}S_k^{\mathrm H}w_k\right]_+,
+\qquad q_{\max}=\max_i q_i.
+$$
+
+The correction is applied entrywise:
+
+$$
+\Delta P_i=
+\begin{cases}
+b_i/\max(q_i,\,0.01q_{\max}),&q_i>0,\\
+0,&q_i=0,
+\end{cases}
+\qquad
+\mathbf P^{(j)}\gets\mathbf P^{(j)}+\Delta\mathbf P.
+$$
+
+Thus zero or negative original row sums still give zero correction, including
+the all-zero case. Positive denominators below 1% of the minibatch maximum
+are raised to that threshold; larger denominators are unchanged. This limits
+amplification from very small positive row sums without additional Fourier
+shifts or a line search. It is an empirical numerical safeguard, not a
+convergence guarantee.
+
 ## Data
 
 The two synthetic input images are included in `assets/`. Supply the measured
