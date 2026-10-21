@@ -7,7 +7,7 @@ from pathlib import Path
 
 from algorithms.lsqml import (
     LSQMLHyperparameters,
-    MPSCompatibleLSQMLTask,
+    ReplicatePaddedLSQMLTask,
     build_lsqml_options,
 )
 from algorithms.magpie import BlindMAGPIETask
@@ -437,7 +437,7 @@ def run_real_lsqml(
     include_initial_metrics: bool = False,
 ) -> ReconstructionResult:
     reconstruction_seed = cfg.seed if seed is None else seed
-    task = MPSCompatibleLSQMLTask(
+    task = ReplicatePaddedLSQMLTask(
         build_real_lsqml_options(
             dataset,
             cfg,
