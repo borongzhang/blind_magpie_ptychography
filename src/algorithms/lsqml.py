@@ -11,7 +11,6 @@ from ptychi.reconstructors.lsqml import (
     LSQMLReconstructor,
     MultiprocessLSQMLReconstructor,
 )
-import torch
 
 from algorithms.probe_shift import ReplicatePaddedProbeShiftMixin
 from utils.reconstruction import (
@@ -29,26 +28,6 @@ if TYPE_CHECKING:
     from utils.synthetic import ExperimentConfig, SyntheticDataset
 
 
-def _solve_hermitian_2x2(
-    a11: torch.Tensor,
-    a12: torch.Tensor,
-    a22: torch.Tensor,
-    b1: torch.Tensor,
-    b2: torch.Tensor,
-) -> tuple[torch.Tensor, torch.Tensor]:
-    """Return the real, nonnegative part of a batched Hermitian 2x2 solve.
-
-    Pty-Chi uses a complex ``torch.linalg.solve`` for this LSQML system. MPS
-    does not support complex LU factorization, so use the algebraically
-    equivalent closed form made only of MPS-supported elementwise operations.
-    """
-    a21 = a12.conj()
-    determinant = a11 * a22 - a12 * a21
-    alpha_1 = ((a22 * b1 - a12 * b2) / determinant).real.clamp_min(0)
-    alpha_2 = ((a11 * b2 - a21 * b1) / determinant).real.clamp_min(0)
-    return alpha_1, alpha_2
-
-
 class ReplicatePaddedLSQMLReconstructor(
     ReplicatePaddedProbeShiftMixin,
     LSQMLReconstructor,
@@ -63,102 +42,17 @@ class ReplicatePaddedMultiprocessLSQMLReconstructor(
     """Multiprocess LSQML with the fixed replicate-padded probe shift."""
 
 
-class MPSCompatibleLSQMLReconstructor(ReplicatePaddedLSQMLReconstructor):
-    """LSQML with its joint step-size solve kept on Apple MPS."""
-
-    def calculate_object_and_probe_update_step_sizes(
-        self,
-        chi,
-        obj_patches,
-        delta_o_i,
-        delta_p_hat,
-        probe=None,
-        slice_index=0,
-        probe_mode_index=None,
-    ):
-        mode_slicer = self.parameter_group.probe._get_probe_mode_slicer(
-            probe_mode_index
-        )
-        obj_patches = obj_patches[:, slice_index]
-        delta_o_i = delta_o_i[:, 0]
-
-        if probe is None:
-            probe = self.forward_model.intermediate_variables.shifted_unique_probes[0]
-        if probe.ndim == 3:
-            probe = probe[None, ...]
-
-        probe = probe[:, mode_slicer]
-        chi = chi[:, mode_slicer]
-        delta_p_hat = delta_p_hat[None, ...]
-        if delta_p_hat.shape[1] > 1:
-            delta_p_hat = delta_p_hat[:, mode_slicer]
-
-        lambda_0 = 1.2e-7 / (probe.shape[-2] * probe.shape[-1])
-        lambda_lsq = 0.1
-        delta_p_o = delta_p_hat * obj_patches[:, None, :, :]
-        delta_o_patches_p = delta_o_i[:, None, :, :] * probe
-
-        a11 = torch.sum(
-            delta_o_patches_p.abs().square() + lambda_0,
-            dim=(-1, -2, -3),
-        )
-        a11 = a11 + lambda_lsq * torch.mean(a11, dim=0)
-        a12 = torch.sum(
-            delta_o_patches_p * delta_p_o.conj(),
-            dim=(-1, -2, -3),
-        )
-        a22 = torch.sum(
-            delta_p_o.abs().square() + lambda_0,
-            dim=(-1, -2, -3),
-        )
-        a22 = a22 + lambda_lsq * torch.mean(a22, dim=0)
-        b1 = torch.sum(
-            torch.real(delta_o_patches_p.conj() * chi),
-            dim=(-1, -2, -3),
-        )
-        b2 = torch.sum(
-            torch.real(delta_p_o.conj() * chi),
-            dim=(-1, -2, -3),
-        )
-
-        alpha_o_i, alpha_p_i = _solve_hermitian_2x2(
-            a11,
-            a12,
-            a22,
-            b1,
-            b2,
-        )
-        alpha_o_i = (
-            alpha_o_i
-            * self.parameter_group.object.options.optimal_step_size_scaler
-            / self.parameter_group.object.n_slices
-        )
-        alpha_p_i = (
-            alpha_p_i * self.parameter_group.probe.options.optimal_step_size_scaler
-        )
-        if self.parameter_group.object.options.multimodal_update:
-            alpha_o_i = alpha_o_i / self.parameter_group.probe.n_modes
-
-        return alpha_o_i, alpha_p_i
-
-
-class MPSCompatibleLSQMLTask(PtychographyTask):
-    """Use fixed replicate-padded LSQML with an MPS-safe step-size solve."""
+class ReplicatePaddedLSQMLTask(PtychographyTask):
+    """Use fixed replicate-padded LSQML for one or multiple CUDA processes."""
 
     def build_reconstructor(self) -> None:
-        use_mps = torch.get_default_device().type == "mps"
-        if use_mps and self.n_ranks != 1:
-            raise RuntimeError("LSQML on Apple MPS supports one process and one GPU.")
-
         parameter_group = paramgrp.PlanarPtychographyParameterGroup(
             object=self.object,
             probe=self.probe,
             probe_positions=self.probe_positions,
             opr_mode_weights=self.opr_mode_weights,
         )
-        if use_mps:
-            reconstructor_class = MPSCompatibleLSQMLReconstructor
-        elif self.n_ranks == 1:
+        if self.n_ranks == 1:
             reconstructor_class = ReplicatePaddedLSQMLReconstructor
         else:
             reconstructor_class = ReplicatePaddedMultiprocessLSQMLReconstructor
@@ -313,7 +207,7 @@ def run_lsqml(
     include_initial_metrics: bool = False,
 ) -> ReconstructionResult:
     reconstruction_seed = cfg.reconstruction_seed if seed is None else seed
-    task = MPSCompatibleLSQMLTask(
+    task = ReplicatePaddedLSQMLTask(
         build_synthetic_lsqml_options(
             dataset,
             cfg,

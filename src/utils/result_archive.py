@@ -133,8 +133,9 @@ def _sha256_array(array: Any) -> str:
     return digest.hexdigest()
 
 
-def _notebook_source_sha256(path: Path) -> str:
-    document = json.loads(path.read_text(encoding="utf-8"))
+def _notebook_bytes_source_sha256(content: bytes) -> str:
+    """Hash notebook cell sources independently of saved execution outputs."""
+    document = json.loads(content)
     semantic_cells = []
     for cell in document.get("cells", []):
         source = cell.get("source", "")
@@ -154,6 +155,10 @@ def _notebook_source_sha256(path: Path) -> str:
             }
         ).encode("utf-8")
     ).hexdigest()
+
+
+def _notebook_source_sha256(path: Path) -> str:
+    return _notebook_bytes_source_sha256(path.read_bytes())
 
 
 def _git_output(project_root: Path, *arguments: str) -> str | None:

@@ -24,6 +24,7 @@ from utils.result_archive import (
     _atomic_write_text,
     _canonical_json,
     _git_output,
+    _notebook_bytes_source_sha256,
     _pip_freeze,
     _sha256_array,
     _sha256_file,
@@ -430,21 +431,6 @@ def _validate_saved_position_arrays(
     return positions, shifts
 
 
-def _notebook_bytes_source_sha256(content: bytes) -> str:
-    """Same semantic digest as result_archive, from one consistent byte snapshot."""
-    document = json.loads(content)
-    cells = []
-    for cell in document.get("cells", []):
-        source = cell.get("source", "")
-        cells.append({
-            "cell_type": str(cell.get("cell_type", "")),
-            "source": "".join(source) if isinstance(source, list) else str(source),
-        })
-    return hashlib.sha256(_canonical_json({
-        "nbformat": int(document.get("nbformat", 0)), "cells": cells,
-    }).encode("utf-8")).hexdigest()
-
-
 @dataclass
 class RealResultArchiveSession:
     """Configuration for restartable, immutable real-data result exports.
@@ -638,7 +624,7 @@ class RealResultArchiveSession:
                 "session_fingerprint": fingerprint,
                 "fingerprint_payload": json.loads(self._initial_identity_json),
                 "source_files": source_records,
-                "capture_point": getattr(self, "_source_capture_point", "archive session creation"),
+                "capture_point": "archive session creation",
             })
             _write_checksum_file(temporary)
             _verify_checksum_file(temporary)
@@ -1452,11 +1438,9 @@ def save_real_notebook_results(session: RealResultArchiveSession) -> Path:
                 "status_porcelain": [] if not git_status else git_status.splitlines(),
             },
             "source_files": source_records,
-            "source_capture_point": getattr(session, "_source_capture_point", "archive session creation"),
+            "source_capture_point": "archive session creation",
             "session_identity_archive": "session/identity.json",
         }
-        if hasattr(session, "_recovery_provenance"):
-            run_manifest["recovery"] = session._recovery_provenance
         _write_json(temporary_directory / "run_manifest.json", run_manifest)
         _atomic_write_text(temporary_directory / "environment.txt", _pip_freeze())
 
