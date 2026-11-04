@@ -1,0 +1,58 @@
+{
+  "amplitude_normalization": "native object/probe normalization every epoch",
+  "batch_size": 27,
+  "dataset_array_sha256": {
+    "intensities": "e379e458d3129fe9bd61e8087c90614daac1a1dea79df9d27cccb856ce81376f",
+    "noiseless_intensities": "741164a1048fa3e85859fdec074048d0562cb4af2651e1e21377c0cc0c68ffe6",
+    "object_init": "3822db8f1eee1e2c7752ba78f71ada15b7b29960a991d2ca50136fc2919ee2c4",
+    "positions_px": "2ddc6dec890e930dd2873d99a093486cc29ebd93a8551f44aba0c27db0f5106d",
+    "probe_init": "1c3a0d13744e53e802cd78a4b0f7c4ad6d67e2b813f17b47c07d97269aa3f600",
+    "probe_truth": "bba26788f80c57bbff7e251bad58f802704889c6a5cd01f8f93b322cb5033921",
+    "roi_mask": "98f749cc322cebb2757dd33253c8b5c4ad0c0bfefe0998fe0b2240183983174d",
+    "top_left_px": "5c64c2425ae39738003380959d050b67f44e56d45262e4aabbf49302b48820bc",
+    "truth": "08091b823c76a9e2016652c280c3e8360ea5f2770894fb490aebaef7c53611f5"
+  },
+  "dataset_fingerprint": "c42aa1758b1e1743b0c5e692cf80627118cef4bc3ddf35fbe64f7b5829d47a47",
+  "device": "cuda",
+  "epochs": 3000,
+  "error_every": 20,
+  "eta": 0.1,
+  "frozen_residual": "final native forward-model amplitude MSE before truth registration; epsilon=1e-7",
+  "method": "rpie",
+  "multigrid_levels": 1,
+  "native_source": {
+    "commit": "9bff0739cc91b9ec58f49341429bd955a767389d",
+    "source_sha256": {
+      "forward_models.py": "3672327ee6034bfa304fd01ad06f61a9f347d617fb8f8aacaa96074ae711a7e8",
+      "image_proc.py": "2fe83441985601fe3a88d8b436bd7a32c26c0c444f207cf7b1c0fc0be412085f",
+      "maths.py": "660b44ef32f480f0d33e67377cc6906d68fc75df6f32f52bea2f979dc9aca749",
+      "reconstructors/base.py": "c2126a42568fc2d97c7ea8ea26ce803a82092685bc11a21fd7dd33d65e7ab408",
+      "reconstructors/lsqml.py": "1296ae6c9300344e47b73e4e89a7fea5fd573f89e375758807135dd0219d5b14",
+      "reconstructors/magpie.py": "366d090d1b4ce8a55cdb0110c5f07c5623b578c461b4ad6814095d3041da7dab",
+      "reconstructors/pie.py": "d5c068d87bfb3faebda5d222efc90a2d0a287a7f81386fe523e1b9f59b256ad7"
+    }
+  },
+  "object_error": "complex NMSE after ROI-only affine phase-ramp and scalar alignment",
+  "online_residual": "pixel-weighted amplitude MSE of pre-update minibatch predictions",
+  "overlap_ratio": 0.75,
+  "parameters": {
+    "object_alpha": 0.02,
+    "probe_alpha": 0.1
+  },
+  "print_every": 300,
+  "ptychi_repository": "https://github.com/AdvancedPhotonSource/pty-chi",
+  "roi": "fixed data.roi_mask, identical for all scientific conditions",
+  "runner_source_sha256": {
+    "data.py": "ad86ec1a08bfe36cb14ec97255e96e57c99d2ee872577d9f26b9c084a8ffdceb",
+    "engine.py": "68b58d05d931665e1d1ee9529d86873d96a62c4d6118b17e2efa38967c57dec1",
+    "protocol.py": "6f209d583b5147b2893663e3ff5c74fa72d6ed6e8643579b2d51f68c4229eea5",
+    "studies.py": "67effd38b20bb40f115bf2a222b51df9f84757270f3a76dfaa202e91aaf2ccb6"
+  },
+  "schema_version": 1,
+  "scientific": true,
+  "seed": 21,
+  "smoke": false,
+  "step_size": 1.0,
+  "torch_version": "2.11.0+cu126",
+  "publication_case_id": "overlap__rpie__overlap_075_eta_0p1_b27__oa_0p02_pa_0p1"
+}

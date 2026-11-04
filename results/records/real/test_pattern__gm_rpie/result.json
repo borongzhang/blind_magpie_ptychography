@@ -1,0 +1,30 @@
+{
+  "batch_size": 244,
+  "dataset": "test_pattern",
+  "dataset_fingerprint": "1949cc5ff5f10dda6aae0d0b4f906ecad8a1138d2e93e1acb0fffa6a617f6a6a",
+  "epochs": 100,
+  "epochs_completed": 100,
+  "frozen_amplitude_mse": 5.906899485068303,
+  "method": "gm_rpie",
+  "num_patterns": 14640,
+  "online_amplitude_mse": 6.113897800445557,
+  "parameters": {
+    "object_alpha": 0.2,
+    "probe_alpha": 1.0
+  },
+  "patterns_processed": 1464000,
+  "position_mean_x_px": 5.336406957212603e-06,
+  "position_mean_y_px": 8.538251677236985e-06,
+  "position_update_max_px": 7.024839401245117,
+  "position_update_rms_px": 0.739903450012207,
+  "reconstruction_seconds": 509.09492777474225,
+  "scientific": true,
+  "scoring_seconds": 12.50212992914021,
+  "seed": 42,
+  "smoke": false,
+  "status": "complete",
+  "study": "real_paper_rerun",
+  "task_id": 2,
+  "total_seconds": 525.0444463538006,
+  "publication_case_id": "real__test_pattern__gm_rpie"
+}

@@ -1,0 +1,29 @@
+{
+  "algorithm": "rpie",
+  "batch_size": 27,
+  "dataset_fingerprint": "7b7f54cb8ba314626fe093cc5dd39d809a8d1831f191c24b42a03ed7df732046",
+  "epochs": 200,
+  "epochs_completed": 33,
+  "error": "FloatingPointError: Non-finite online amplitude MSE at epoch 34",
+  "eta": 0.1,
+  "failure_epoch": 34,
+  "frozen_evaluation_seconds": 0.0,
+  "history_write_seconds": 0.003189054084941745,
+  "method": "rpie",
+  "object_alpha": 0.004,
+  "overlap_ratio": 0.9375,
+  "probe_alpha": 0.004,
+  "reconstruction_seconds": 128.90865071327426,
+  "run_id": "oa_0p004_pa_0p004",
+  "scientific": true,
+  "scoring_seconds": 1.059304331894964,
+  "seed": 21,
+  "status": "failed",
+  "total_seconds": 131.0201552149374,
+  "transfer_seconds": 0.004304722184315324,
+  "publication_case_id": "overlap__rpie__overlap_09375_eta_0p1_b27__oa_0p004_pa_0p004",
+  "parameters": {
+    "object_alpha": 0.004,
+    "probe_alpha": 0.004
+  }
+}

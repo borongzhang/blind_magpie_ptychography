@@ -1,0 +1,13 @@
+{
+  "python": "3.11.18",
+  "cuda_runtime": "12.6",
+  "packages": {
+    "numpy": "2.4.6",
+    "pandas": "3.1.0",
+    "ptychi": "2.3.1.dev3+g9bff0739c",
+    "pydantic": "2.14.2",
+    "scipy": "1.17.1",
+    "torch": "2.11.0+cu126"
+  },
+  "ptychi_commit": "9bff0739cc91b9ec58f49341429bd955a767389d"
+}

@@ -1,0 +1,413 @@
+{
+  "batch_size": 29,
+  "dataset": "integrated_circuit",
+  "dataset_array_sha256": {
+    "data": "77c12392700ce7cd745dd0552c47e2645277e6a9a93aefbcd49b24670de35d62",
+    "object_init": "2f4079bb4c9ef407f9b8380a2843814299569b48e70daad481d8f24f5040709e",
+    "positions_px": "51c03ad742d50453635f7b1c14f13c0b3bef9f2406811886ce3fcc1159c3fe82",
+    "probe_init": "cde15b9732177c4a909a6692afa3e0d0289d93c8cde091444434a65970c4688f",
+    "selected_indices": "737cd03e10760c04c5666c5b2f9dad11f148db129f1c72ce1420f89e807dd270"
+  },
+  "dataset_fingerprint": "9a830886c6fe50f0facb586856228fa280d28dbc8fe0aaaf84670854f7edafa6",
+  "device": "cuda",
+  "epochs": 100,
+  "method": "rpie",
+  "metric": "frozen raw amplitude MSE before any display registration; no ground truth",
+  "native_source": {
+    "commit": "9bff0739cc91b9ec58f49341429bd955a767389d",
+    "source_sha256": {
+      "forward_models.py": "3672327ee6034bfa304fd01ad06f61a9f347d617fb8f8aacaa96074ae711a7e8",
+      "image_proc.py": "2fe83441985601fe3a88d8b436bd7a32c26c0c444f207cf7b1c0fc0be412085f",
+      "maths.py": "660b44ef32f480f0d33e67377cc6906d68fc75df6f32f52bea2f979dc9aca749",
+      "reconstructors/base.py": "c2126a42568fc2d97c7ea8ea26ce803a82092685bc11a21fd7dd33d65e7ab408",
+      "reconstructors/lsqml.py": "1296ae6c9300344e47b73e4e89a7fea5fd573f89e375758807135dd0219d5b14",
+      "reconstructors/magpie.py": "366d090d1b4ce8a55cdb0110c5f07c5623b578c461b4ad6814095d3041da7dab",
+      "reconstructors/pie.py": "d5c068d87bfb3faebda5d222efc90a2d0a287a7f81386fe523e1b9f59b256ad7"
+    }
+  },
+  "num_patterns": 812,
+  "online_metric": "pixel-weighted pre-update minibatch amplitude MSE",
+  "options": {
+    "data_options": {
+      "fft_shift": true,
+      "free_space_propagation_distance_m": "inf",
+      "options_class_name": "PtychographyDataOptions",
+      "save_data_on_device": true,
+      "wavelength_m": 1.23984193e-10
+    },
+    "object_options": {
+      "alpha": 1.0,
+      "build_preconditioner_with_all_modes": false,
+      "determine_position_origin_coords_by": "positions",
+      "hard_limits_magnitude_phase": {
+        "abs_lim": null,
+        "enabled": false,
+        "optimization_plan": {
+          "options_class_name": "OptimizationPlan",
+          "start": 0,
+          "step_size_scheduler_class": null,
+          "step_size_scheduler_options": {},
+          "stop": null,
+          "stride": 1
+        },
+        "options_class_name": "ObjectHardLimitsMagnitudePhase",
+        "phase_lim": null
+      },
+      "l1_norm_constraint": {
+        "enabled": false,
+        "optimization_plan": {
+          "options_class_name": "OptimizationPlan",
+          "start": 0,
+          "step_size_scheduler_class": null,
+          "step_size_scheduler_options": {},
+          "stop": null,
+          "stride": 1
+        },
+        "options_class_name": "ObjectL1NormConstraintOptions",
+        "weight": 0
+      },
+      "l2_norm_constraint": {
+        "enabled": false,
+        "optimization_plan": {
+          "options_class_name": "OptimizationPlan",
+          "start": 0,
+          "step_size_scheduler_class": null,
+          "step_size_scheduler_options": {},
+          "stop": null,
+          "stride": 1
+        },
+        "options_class_name": "ObjectL2NormConstraintOptions",
+        "weight": 0
+      },
+      "multislice_regularization": {
+        "enabled": false,
+        "optimization_plan": {
+          "options_class_name": "OptimizationPlan",
+          "start": 0,
+          "step_size_scheduler_class": null,
+          "step_size_scheduler_options": {},
+          "stop": null,
+          "stride": 1
+        },
+        "options_class_name": "ObjectMultisliceRegularizationOptions",
+        "unwrap_image_grad_method": "fourier_differentiation",
+        "unwrap_image_integration_method": "fourier",
+        "unwrap_phase": true,
+        "weight": 0
+      },
+      "optimizable": true,
+      "optimization_plan": {
+        "options_class_name": "OptimizationPlan",
+        "start": 0,
+        "step_size_scheduler_class": null,
+        "step_size_scheduler_options": {},
+        "stop": null,
+        "stride": 1
+      },
+      "optimizer": "sgd",
+      "optimizer_params": {},
+      "options_class_name": "PIEObjectOptions",
+      "patch_interpolation_method": "fourier",
+      "pixel_size_aspect_ratio": 1.0,
+      "pixel_size_m": 1.25921446015625e-08,
+      "position_origin_coords": null,
+      "remove_grid_artifacts": {
+        "component": "phase",
+        "direction": "xy",
+        "enabled": false,
+        "optimization_plan": {
+          "options_class_name": "OptimizationPlan",
+          "start": 0,
+          "step_size_scheduler_class": null,
+          "step_size_scheduler_options": {},
+          "stop": null,
+          "stride": 1
+        },
+        "options_class_name": "RemoveGridArtifactsOptions",
+        "period_x_m": 1e-07,
+        "period_y_m": 1e-07,
+        "window_size": 5
+      },
+      "remove_object_probe_ambiguity": {
+        "enabled": true,
+        "optimization_plan": {
+          "options_class_name": "OptimizationPlan",
+          "start": 0,
+          "step_size_scheduler_class": null,
+          "step_size_scheduler_options": {},
+          "stop": null,
+          "stride": 1
+        },
+        "options_class_name": "RemoveObjectProbeAmbiguityOptions"
+      },
+      "slice_spacing_options": {
+        "optimizable": false,
+        "optimization_plan": {
+          "options_class_name": "OptimizationPlan",
+          "start": 0,
+          "step_size_scheduler_class": null,
+          "step_size_scheduler_options": {},
+          "stop": null,
+          "stride": 1
+        },
+        "optimizer": "sgd",
+        "optimizer_params": {},
+        "options_class_name": "SliceSpacingOptions",
+        "step_size": 1e-10
+      },
+      "slice_spacings_m": null,
+      "smoothness_constraint": {
+        "alpha": 0,
+        "enabled": false,
+        "optimization_plan": {
+          "options_class_name": "OptimizationPlan",
+          "start": 0,
+          "step_size_scheduler_class": null,
+          "step_size_scheduler_options": {},
+          "stop": null,
+          "stride": 1
+        },
+        "options_class_name": "ObjectSmoothnessConstraintOptions"
+      },
+      "step_size": 1.0,
+      "total_variation": {
+        "enabled": false,
+        "optimization_plan": {
+          "options_class_name": "OptimizationPlan",
+          "start": 0,
+          "step_size_scheduler_class": null,
+          "step_size_scheduler_options": {},
+          "stop": null,
+          "stride": 1
+        },
+        "options_class_name": "ObjectTotalVariationOptions",
+        "weight": 0
+      }
+    },
+    "opr_mode_weight_options": {
+      "optimizable": false,
+      "optimization_plan": {
+        "options_class_name": "OptimizationPlan",
+        "start": 0,
+        "step_size_scheduler_class": null,
+        "step_size_scheduler_options": {},
+        "stop": null,
+        "stride": 1
+      },
+      "optimize_eigenmode_weights": true,
+      "optimize_intensity_variation": false,
+      "optimizer": "sgd",
+      "optimizer_params": {},
+      "options_class_name": "PIEOPRModeWeightsOptions",
+      "primary_mode_weight_floor": null,
+      "smoothing": {
+        "enabled": false,
+        "method": "median",
+        "optimization_plan": {
+          "options_class_name": "OptimizationPlan",
+          "start": 0,
+          "step_size_scheduler_class": null,
+          "step_size_scheduler_options": {},
+          "stop": null,
+          "stride": 1
+        },
+        "options_class_name": "OPRModeWeightsSmoothingOptions",
+        "polynomial_degree": 4
+      },
+      "step_size": 1,
+      "update_relaxation": 1.0
+    },
+    "options_class_name": "RPIEOptions",
+    "probe_options": {
+      "alpha": 0.5,
+      "center_constraint": {
+        "center_modes_individually": false,
+        "enabled": false,
+        "optimization_plan": {
+          "options_class_name": "OptimizationPlan",
+          "start": 0,
+          "step_size_scheduler_class": null,
+          "step_size_scheduler_options": {},
+          "stop": null,
+          "stride": 1
+        },
+        "options_class_name": "ProbeCenterConstraintOptions",
+        "use_intensity_for_com": false,
+        "use_total_intensity_for_com": false
+      },
+      "eigenmode_update_relaxation": 1.0,
+      "experimental": {
+        "options_class_name": "PIEProbeExperimentalOptions",
+        "sdl_probe_options": {
+          "enabled": false,
+          "options_class_name": "SynthesisDictLearnProbeOptions",
+          "probe_sparse_code_nnz": null
+        }
+      },
+      "optimizable": true,
+      "optimization_plan": {
+        "options_class_name": "OptimizationPlan",
+        "start": 0,
+        "step_size_scheduler_class": null,
+        "step_size_scheduler_options": {},
+        "stop": null,
+        "stride": 1
+      },
+      "optimizer": "sgd",
+      "optimizer_params": {},
+      "options_class_name": "PIEProbeOptions",
+      "orthogonalize_incoherent_modes": {
+        "enabled": false,
+        "method": "svd",
+        "optimization_plan": {
+          "options_class_name": "OptimizationPlan",
+          "start": 0,
+          "step_size_scheduler_class": null,
+          "step_size_scheduler_options": {},
+          "stop": null,
+          "stride": 1
+        },
+        "options_class_name": "ProbeOrthogonalizeIncoherentModesOptions",
+        "sort_by_occupancy": false
+      },
+      "orthogonalize_opr_modes": {
+        "enabled": false,
+        "optimization_plan": {
+          "options_class_name": "OptimizationPlan",
+          "start": 0,
+          "step_size_scheduler_class": null,
+          "step_size_scheduler_options": {},
+          "stop": null,
+          "stride": 1
+        },
+        "options_class_name": "ProbeOrthogonalizeOPRModesOptions"
+      },
+      "pixel_size_aspect_ratio": null,
+      "pixel_size_m": 1.25921446015625e-08,
+      "power_constraint": {
+        "enabled": false,
+        "optimization_plan": {
+          "options_class_name": "OptimizationPlan",
+          "start": 0,
+          "step_size_scheduler_class": null,
+          "step_size_scheduler_options": {},
+          "stop": null,
+          "stride": 1
+        },
+        "options_class_name": "ProbePowerConstraintOptions",
+        "probe_power": 0.0,
+        "scale_object": true
+      },
+      "step_size": 1.0,
+      "support_constraint": {
+        "enabled": false,
+        "fixed_probe_support": "none",
+        "fixed_probe_support_params": null,
+        "optimization_plan": {
+          "options_class_name": "OptimizationPlan",
+          "start": 0,
+          "step_size_scheduler_class": null,
+          "step_size_scheduler_options": {},
+          "stop": null,
+          "stride": 1
+        },
+        "options_class_name": "ProbeSupportConstraintOptions",
+        "threshold": 0.005
+      }
+    },
+    "probe_position_options": {
+      "affine_transform_constraint": {
+        "apply_constraint": true,
+        "degrees_of_freedom": [
+          "rotation",
+          "scale",
+          "shear",
+          "asymmetry"
+        ],
+        "enabled": false,
+        "max_expected_error": 1.0,
+        "optimization_plan": {
+          "options_class_name": "OptimizationPlan",
+          "start": 0,
+          "step_size_scheduler_class": null,
+          "step_size_scheduler_options": {},
+          "stop": null,
+          "stride": 1
+        },
+        "options_class_name": "PositionAffineTransformConstraintOptions",
+        "override_update_flexibility": null,
+        "position_weight_update_interval": 10
+      },
+      "constrain_position_mean": true,
+      "correction_options": {
+        "clip_update_magnitude_by_mad": false,
+        "correction_type": "gradient",
+        "cross_correlation_probe_threshold": 0.1,
+        "cross_correlation_real_space_width": 0.01,
+        "cross_correlation_scale": 20000,
+        "differentiation_method": "fourier_differentiation",
+        "options_class_name": "PositionCorrectionOptions",
+        "slice_for_correction": null,
+        "update_magnitude_limit": 50.0
+      },
+      "optimizable": true,
+      "optimization_plan": {
+        "options_class_name": "OptimizationPlan",
+        "start": 0,
+        "step_size_scheduler_class": null,
+        "step_size_scheduler_options": {},
+        "stop": null,
+        "stride": 1
+      },
+      "optimizer": "sgd",
+      "optimizer_params": {},
+      "options_class_name": "PIEProbePositionOptions",
+      "step_size": 1.0
+    },
+    "reconstructor_options": {
+      "allow_nondeterministic_algorithms": false,
+      "batch_size": 29,
+      "batching_mode": "random",
+      "compact_mode_update_clustering": false,
+      "compact_mode_update_clustering_stride": 1,
+      "default_device": "gpu",
+      "default_dtype": "float32",
+      "displayed_loss_function": "mse_sqrt",
+      "exclude_measured_pixels_below": null,
+      "forward_model_options": {
+        "diffraction_pattern_blur_sigma": null,
+        "low_memory_mode": false,
+        "options_class_name": "ForwardModelOptions",
+        "pad_for_shift": 1,
+        "shift_operator": "auto"
+      },
+      "num_epochs": 100,
+      "options_class_name": "RPIEReconstructorOptions",
+      "random_seed": 42,
+      "use_double_precision_for_fft": false
+    }
+  },
+  "parameters": {
+    "object_alpha": 1.0,
+    "probe_alpha": 0.5
+  },
+  "plan_sha256": "a4774512425e480e40ea8c365b9613eeaa0626787c1cbf3c9520fd0996d47069",
+  "print_every": 10,
+  "runner_sha256": {
+    "data.py": "99349cd499c5dc59bd4edd4260dc0895267480055ba7eb0f6932251de675e426",
+    "engine.py": "d90d23ae07d4b1bfa34d131e1618c8346f69f5717887619d0ce9d1ede428443c",
+    "entrypoint": "1c712465fdc556df58b3d9d966d5281a698067e4f545b3b6db3eb05b8bbb42f4",
+    "paper_protocol": "01726d597cedf43f31016661eff1c41957ecd2e93d82a1ecc931eb7feb772b9a",
+    "protocol.py": "8dfe5e0e54fb8080669b6e173ce074917a7791ac8561a878301569e48ff8bfc6",
+    "real.py": "67b59c0d6b0bdb3bd277e64b782cd61eac5a3b7451bdad34e4264e76c00c2e86",
+    "real_data.py": "53a7c2f137395006f680c6b0112348573d3a8f57d17fb3ef340cf2f5460b4ea0"
+  },
+  "schema_version": 1,
+  "scientific": true,
+  "score_every": 20,
+  "seed": 42,
+  "smoke": false,
+  "study": "real_paper_rerun",
+  "task_id": 4,
+  "publication_case_id": "real__integrated_circuit__rpie"
+}

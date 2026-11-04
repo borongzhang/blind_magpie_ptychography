@@ -1,0 +1,30 @@
+{
+  "batch_size": 29,
+  "dataset": "integrated_circuit",
+  "dataset_fingerprint": "9a830886c6fe50f0facb586856228fa280d28dbc8fe0aaaf84670854f7edafa6",
+  "epochs": 100,
+  "epochs_completed": 100,
+  "frozen_amplitude_mse": 0.3599382796259684,
+  "method": "rpie",
+  "num_patterns": 812,
+  "online_amplitude_mse": 0.3851298689842224,
+  "parameters": {
+    "object_alpha": 1.0,
+    "probe_alpha": 0.5
+  },
+  "patterns_processed": 81200,
+  "position_mean_x_px": 4.209321105008712e-06,
+  "position_mean_y_px": -9.621305252949242e-06,
+  "position_update_max_px": 4.288393974304199,
+  "position_update_rms_px": 0.9872755408287048,
+  "reconstruction_seconds": 68.39747428242117,
+  "scientific": true,
+  "scoring_seconds": 3.290031381417066,
+  "seed": 42,
+  "smoke": false,
+  "status": "complete",
+  "study": "real_paper_rerun",
+  "task_id": 4,
+  "total_seconds": 74.81282757362351,
+  "publication_case_id": "real__integrated_circuit__rpie"
+}
