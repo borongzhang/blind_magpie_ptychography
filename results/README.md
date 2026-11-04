@@ -35,9 +35,18 @@ the eight 100-epoch real-data reconstructions used in the paper. These twelve
 NPZ files are lossless copies. `synthetic_truth.npz` contains only the four
 original truth/initialization arrays needed to regenerate the figures, with
 unchanged array hashes. Measurement caches and other reconstruction arrays are
-not included. `figures/` contains only the seven current manuscript figures,
+not included. `figures/` contains the ten current numerical manuscript figures,
 each as PDF and PNG.
 
 Archived metadata aliases under `analysis/` preserve the original file hashes
 required by the frozen rerun protocols. Use `index.json` and `records/` for
 analysis and plotting.
+
+The overlap and noise studies use 3,000, 800, and 200 epochs at 75%, 87.5%, and
+93.75% overlap, respectively. Their minibatches contain 27 scan positions:
+3.21%, 0.83%, and 0.21% of the respective datasets. The batch study also uses
+108 (3.32%) and 432 (13.30%) scan positions at 87.5% overlap.
+
+Regenerate all ten current figures with
+`python scripts/reproduce_manuscript_figures.py`. Validate the published records
+with `python scripts/validate_results.py`.

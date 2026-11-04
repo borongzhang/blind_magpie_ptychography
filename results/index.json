@@ -17158,7 +17158,7 @@
           }
         },
         "runner_source_sha256": null,
-        "reconstruction_sha256": "6d10942fa6eeed0cc53987c43e0b9debf2f367a58a058b7379a826cb47aa1a4a"
+        "reconstruction_sha256": "30569d21ddbed2258c7e74d88c55288eef42c456b5e4251852d5530e25ca302a"
       },
       "reconstruction_keys": [
         "object",
@@ -17168,9 +17168,7 @@
         "object_origin_coords",
         "initial_probe",
         "selected_pattern_indices",
-        "dx_m",
-        "epoch",
-        "scientific"
+        "dx_m"
       ]
     },
     {

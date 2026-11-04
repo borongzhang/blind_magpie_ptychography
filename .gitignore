@@ -8,6 +8,7 @@ venv/
 build/
 dist/
 reproduced_figures/
+reproduced_manuscript_figures/
 .pytest_cache/
 
 # Inputs and generated reconstruction outputs.
