@@ -1,2 +1,0 @@
-epoch,online_amplitude_mse,object_nmse,probe_nmse,phase_rmse,errors_recorded,reconstruction_seconds,transfer_seconds,scoring_seconds,patterns_processed
-0,,0.5332792585057522,4.783905725609614,0.819117510338045,True,0.0,0.0,0.5208427070028847,0

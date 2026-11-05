@@ -7,29 +7,8 @@ __pycache__/
 venv/
 build/
 dist/
-reproduced_figures/
-reproduced_manuscript_figures/
 .pytest_cache/
-
-# Inputs and generated reconstruction outputs.
-assets/ptycho_real_data/*
-!assets/ptycho_real_data/README.md
-*.hdf5
+/runs/
+/smoke_runs/
 *.h5
-*.npy
-*.npz
-!results/reconstructions/**/*.npz
-results/datasets/
-results/runs/
-results/smoke/
-results/studies/
-results/sweeps/
-/evaluations/
-studies/reference_075/results/
-
-# Local scheduler and transfer artifacts.
-logs/
-downloads/
-*.out
-*.err
-*.lock
+*.hdf5

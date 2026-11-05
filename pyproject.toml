@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "blind-magpie"
-version = "0.3.0"
-description = "Current MAGPIE blind ptychography experiments and recorded results."
+version = "0.4.0"
+description = "Synthetic blind ptychography reproduction and executed result notebooks."
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
 license = {file = "LICENSE"}
@@ -28,7 +28,7 @@ reconstruction = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["magpie_1024*", "magpie_publication*"]
+include = ["blind_magpie*"]
 
 [tool.setuptools.package-data]
-magpie_1024 = ["assets/*.tif", "assets/*.tiff"]
+blind_magpie = ["assets/*.tif", "assets/*.tiff"]

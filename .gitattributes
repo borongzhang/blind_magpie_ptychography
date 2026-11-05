@@ -1,12 +1,6 @@
 * text=auto eol=lf
-# Recorded bytes are part of the experiment identity, including CSV newlines.
-results/** -text
-provenance/** -text
-src/magpie_1024/** -text
-studies/reference_075/** -text
-*.csv -text whitespace=cr-at-eol
-*.npz -text
+results/*.csv -text
+*.gz -text
 *.png -text
-*.pdf -text
 *.tif -text
 *.tiff -text

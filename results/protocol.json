@@ -1,0 +1,303 @@
+{
+  "title": "Stochastic Multigrid Framework for Blind Ptychography",
+  "implementation": {
+    "repository": "https://github.com/AdvancedPhotonSource/pty-chi",
+    "commit": "9bff0739cc91b9ec58f49341429bd955a767389d",
+    "source_sha256": {
+      "forward_models.py": "3672327ee6034bfa304fd01ad06f61a9f347d617fb8f8aacaa96074ae711a7e8",
+      "image_proc.py": "2fe83441985601fe3a88d8b436bd7a32c26c0c444f207cf7b1c0fc0be412085f",
+      "maths.py": "660b44ef32f480f0d33e67377cc6906d68fc75df6f32f52bea2f979dc9aca749",
+      "reconstructors/base.py": "c2126a42568fc2d97c7ea8ea26ce803a82092685bc11a21fd7dd33d65e7ab408",
+      "reconstructors/lsqml.py": "1296ae6c9300344e47b73e4e89a7fea5fd573f89e375758807135dd0219d5b14",
+      "reconstructors/magpie.py": "366d090d1b4ce8a55cdb0110c5f07c5623b578c461b4ad6814095d3041da7dab",
+      "reconstructors/pie.py": "d5c068d87bfb3faebda5d222efc90a2d0a287a7f81386fe523e1b9f59b256ad7"
+    }
+  },
+  "methods": [
+    "rpie",
+    "lsqml",
+    "gm_rpie",
+    "gm_magpie"
+  ],
+  "seeds": {
+    "data": 42,
+    "reconstruction": 21
+  },
+  "object_shape": [
+    1024,
+    1024
+  ],
+  "probe_shape": [
+    128,
+    128
+  ],
+  "probe_truth_parameter_m": -0.0007,
+  "probe_initial_parameter_m": -0.0004,
+  "overlap_definition": "1 - nominal scan step / probe array width",
+  "scan_positions": {
+    "0.75": 841,
+    "0.875": 3249,
+    "0.9375": 12769
+  },
+  "epochs": {
+    "0.75": 3000,
+    "0.875": 800,
+    "0.9375": 200
+  },
+  "batch_sizes": [
+    27,
+    108,
+    432
+  ],
+  "batch_study_overlap": 0.875,
+  "noise_parameters": [
+    0.1,
+    0.2,
+    0.4
+  ],
+  "noise_model": "d = eta * Poisson(d_noiseless / eta)",
+  "error_every": 20,
+  "print_every": 300,
+  "parameter_grid": {
+    "pie": {
+      "object_alpha": [
+        0.004,
+        0.02,
+        0.1
+      ],
+      "probe_alpha": [
+        0.004,
+        0.02,
+        0.1
+      ]
+    },
+    "lsqml": {
+      "damping": [
+        0.04,
+        0.1,
+        0.2,
+        1
+      ],
+      "sigma": [
+        0.3,
+        0.4,
+        0.5,
+        0.6
+      ]
+    }
+  },
+  "selection": "Lowest final object NMSE among completed candidates for each method and condition",
+  "selected_cases": {
+    "overlap": [
+      "overlap__gm_magpie__overlap_075_eta_0p1_b27__oa_0p1_pa_0p02",
+      "overlap__gm_magpie__overlap_0875_eta_0p1_b27__oa_0p1_pa_0p004",
+      "overlap__gm_magpie__overlap_09375_eta_0p1_b27__oa_0p1_pa_0p004",
+      "overlap__gm_rpie__overlap_075_eta_0p1_b27__oa_0p02_pa_0p1",
+      "overlap__gm_rpie__overlap_0875_eta_0p1_b27__oa_0p02_pa_0p1",
+      "overlap__gm_rpie__overlap_09375_eta_0p1_b27__oa_0p02_pa_0p02",
+      "overlap__lsqml__overlap_075_eta_0p1_b27__damp_0p04_sigma_0p4",
+      "overlap__lsqml__overlap_0875_eta_0p1_b27__damp_0p2_sigma_0p3",
+      "overlap__lsqml__overlap_09375_eta_0p1_b27__damp_0p2_sigma_0p4",
+      "overlap__rpie__overlap_075_eta_0p1_b27__oa_0p02_pa_0p1",
+      "overlap__rpie__overlap_0875_eta_0p1_b27__oa_0p004_pa_0p1",
+      "overlap__rpie__overlap_09375_eta_0p1_b27__oa_0p02_pa_0p1"
+    ],
+    "noise": [
+      "noise__gm_magpie__overlap_075_eta_0p2_b27__oa_0p1_pa_0p02",
+      "noise__gm_magpie__overlap_075_eta_0p4_b27__oa_0p1_pa_0p02",
+      "noise__gm_magpie__overlap_0875_eta_0p2_b27__oa_0p1_pa_0p004",
+      "noise__gm_magpie__overlap_0875_eta_0p4_b27__oa_0p1_pa_0p004",
+      "noise__gm_magpie__overlap_09375_eta_0p2_b27__oa_0p1_pa_0p004",
+      "noise__gm_magpie__overlap_09375_eta_0p4_b27__oa_0p1_pa_0p004",
+      "noise__gm_rpie__overlap_075_eta_0p2_b27__oa_0p02_pa_0p1",
+      "noise__gm_rpie__overlap_075_eta_0p4_b27__oa_0p02_pa_0p1",
+      "noise__gm_rpie__overlap_0875_eta_0p2_b27__oa_0p02_pa_0p1",
+      "noise__gm_rpie__overlap_0875_eta_0p4_b27__oa_0p02_pa_0p1",
+      "noise__gm_rpie__overlap_09375_eta_0p2_b27__oa_0p02_pa_0p02",
+      "noise__gm_rpie__overlap_09375_eta_0p4_b27__oa_0p02_pa_0p02",
+      "noise__lsqml__overlap_075_eta_0p2_b27__damp_0p04_sigma_0p4",
+      "noise__lsqml__overlap_075_eta_0p4_b27__damp_0p04_sigma_0p4",
+      "noise__lsqml__overlap_0875_eta_0p2_b27__damp_0p2_sigma_0p3",
+      "noise__lsqml__overlap_0875_eta_0p4_b27__damp_0p2_sigma_0p3",
+      "noise__lsqml__overlap_09375_eta_0p2_b27__damp_0p2_sigma_0p4",
+      "noise__lsqml__overlap_09375_eta_0p4_b27__damp_0p2_sigma_0p4",
+      "noise__rpie__overlap_075_eta_0p2_b27__oa_0p02_pa_0p1",
+      "noise__rpie__overlap_075_eta_0p4_b27__oa_0p02_pa_0p1",
+      "noise__rpie__overlap_0875_eta_0p2_b27__oa_0p004_pa_0p1",
+      "noise__rpie__overlap_0875_eta_0p4_b27__oa_0p004_pa_0p1",
+      "noise__rpie__overlap_09375_eta_0p2_b27__oa_0p02_pa_0p1",
+      "noise__rpie__overlap_09375_eta_0p4_b27__oa_0p02_pa_0p1",
+      "overlap__gm_magpie__overlap_075_eta_0p1_b27__oa_0p1_pa_0p02",
+      "overlap__gm_magpie__overlap_0875_eta_0p1_b27__oa_0p1_pa_0p004",
+      "overlap__gm_magpie__overlap_09375_eta_0p1_b27__oa_0p1_pa_0p004",
+      "overlap__gm_rpie__overlap_075_eta_0p1_b27__oa_0p02_pa_0p1",
+      "overlap__gm_rpie__overlap_0875_eta_0p1_b27__oa_0p02_pa_0p1",
+      "overlap__gm_rpie__overlap_09375_eta_0p1_b27__oa_0p02_pa_0p02",
+      "overlap__lsqml__overlap_075_eta_0p1_b27__damp_0p04_sigma_0p4",
+      "overlap__lsqml__overlap_0875_eta_0p1_b27__damp_0p2_sigma_0p3",
+      "overlap__lsqml__overlap_09375_eta_0p1_b27__damp_0p2_sigma_0p4",
+      "overlap__rpie__overlap_075_eta_0p1_b27__oa_0p02_pa_0p1",
+      "overlap__rpie__overlap_0875_eta_0p1_b27__oa_0p004_pa_0p1",
+      "overlap__rpie__overlap_09375_eta_0p1_b27__oa_0p02_pa_0p1"
+    ],
+    "batch": [
+      "batch__gm_magpie__overlap_0875_eta_0p1_b108__oa_0p02_pa_0p02",
+      "batch__gm_magpie__overlap_0875_eta_0p1_b432__oa_0p004_pa_0p1",
+      "batch__gm_rpie__overlap_0875_eta_0p1_b108__oa_0p004_pa_0p02",
+      "batch__gm_rpie__overlap_0875_eta_0p1_b432__oa_0p004_pa_0p004",
+      "batch__lsqml__overlap_0875_eta_0p1_b108__damp_0p1_sigma_0p3",
+      "batch__lsqml__overlap_0875_eta_0p1_b432__damp_1_sigma_0p3",
+      "batch__rpie__overlap_0875_eta_0p1_b108__oa_0p004_pa_0p1",
+      "batch__rpie__overlap_0875_eta_0p1_b432__oa_0p1_pa_0p1",
+      "overlap__gm_magpie__overlap_0875_eta_0p1_b27__oa_0p1_pa_0p004",
+      "overlap__gm_rpie__overlap_0875_eta_0p1_b27__oa_0p02_pa_0p1",
+      "overlap__lsqml__overlap_0875_eta_0p1_b27__damp_0p2_sigma_0p3",
+      "overlap__rpie__overlap_0875_eta_0p1_b27__oa_0p004_pa_0p1"
+    ]
+  },
+  "metrics": {
+    "object": "Complex NMSE after complex-scale and affine-phase alignment on the common scanned region",
+    "probe": "Full-probe complex NMSE after the paired ambiguity correction and removal of remaining global phase"
+  },
+  "dataset_array_sha256": {
+    "overlap_0.75_eta_0.1": {
+      "overlap": 0.75,
+      "eta": 0.1,
+      "arrays_sha256": {
+        "intensities": "e379e458d3129fe9bd61e8087c90614daac1a1dea79df9d27cccb856ce81376f",
+        "noiseless_intensities": "741164a1048fa3e85859fdec074048d0562cb4af2651e1e21377c0cc0c68ffe6",
+        "object_init": "3822db8f1eee1e2c7752ba78f71ada15b7b29960a991d2ca50136fc2919ee2c4",
+        "positions_px": "2ddc6dec890e930dd2873d99a093486cc29ebd93a8551f44aba0c27db0f5106d",
+        "probe_init": "1c3a0d13744e53e802cd78a4b0f7c4ad6d67e2b813f17b47c07d97269aa3f600",
+        "probe_truth": "bba26788f80c57bbff7e251bad58f802704889c6a5cd01f8f93b322cb5033921",
+        "roi_mask": "98f749cc322cebb2757dd33253c8b5c4ad0c0bfefe0998fe0b2240183983174d",
+        "top_left_px": "5c64c2425ae39738003380959d050b67f44e56d45262e4aabbf49302b48820bc",
+        "truth": "08091b823c76a9e2016652c280c3e8360ea5f2770894fb490aebaef7c53611f5"
+      }
+    },
+    "overlap_0.875_eta_0.1": {
+      "overlap": 0.875,
+      "eta": 0.1,
+      "arrays_sha256": {
+        "intensities": "439ab739c2c262c36c85040507faddf6e4eef74a3c97e1b465ce93d7fa9ae21d",
+        "noiseless_intensities": "53944c6249ca0e7490f2f90b9ea26ecc48513a6e989ffb84b2601310d3a78077",
+        "object_init": "3822db8f1eee1e2c7752ba78f71ada15b7b29960a991d2ca50136fc2919ee2c4",
+        "positions_px": "d752144d079c0e7188451f03eafdd6ae2bd7533f31e60288dbfc8a344104b228",
+        "probe_init": "1c3a0d13744e53e802cd78a4b0f7c4ad6d67e2b813f17b47c07d97269aa3f600",
+        "probe_truth": "bba26788f80c57bbff7e251bad58f802704889c6a5cd01f8f93b322cb5033921",
+        "roi_mask": "98f749cc322cebb2757dd33253c8b5c4ad0c0bfefe0998fe0b2240183983174d",
+        "top_left_px": "700767db32dcfea71ed201deb4ca30fa20e6cecdc68f3517c4caa27359268879",
+        "truth": "08091b823c76a9e2016652c280c3e8360ea5f2770894fb490aebaef7c53611f5"
+      }
+    },
+    "overlap_0.9375_eta_0.1": {
+      "overlap": 0.9375,
+      "eta": 0.1,
+      "arrays_sha256": {
+        "intensities": "8f923b85e5b975fb6e13a18e7d52979f7e1084caea6b6e54549a70e06c488460",
+        "noiseless_intensities": "4c10d55306deb5eadb1d3cf58fa9262c3f34997802d2583ebef06b391d68bd0d",
+        "object_init": "3822db8f1eee1e2c7752ba78f71ada15b7b29960a991d2ca50136fc2919ee2c4",
+        "positions_px": "e52c1917e91d6bfff8cfd8fd340aaffcaed46edf008aee2483ae3467ad3a5158",
+        "probe_init": "1c3a0d13744e53e802cd78a4b0f7c4ad6d67e2b813f17b47c07d97269aa3f600",
+        "probe_truth": "bba26788f80c57bbff7e251bad58f802704889c6a5cd01f8f93b322cb5033921",
+        "roi_mask": "98f749cc322cebb2757dd33253c8b5c4ad0c0bfefe0998fe0b2240183983174d",
+        "top_left_px": "1ba2cfcf0128fe38d5ebfdcf6ef5cbe8ca0616dea3d086ca432fef869c39e78c",
+        "truth": "08091b823c76a9e2016652c280c3e8360ea5f2770894fb490aebaef7c53611f5"
+      }
+    },
+    "overlap_0.75_eta_0.2": {
+      "overlap": 0.75,
+      "eta": 0.2,
+      "arrays_sha256": {
+        "intensities": "8931306cd42eed849ae4d075152ae2a15f51b34af866cc7fa2e3e79eb12fe2ef",
+        "noiseless_intensities": "741164a1048fa3e85859fdec074048d0562cb4af2651e1e21377c0cc0c68ffe6",
+        "object_init": "3822db8f1eee1e2c7752ba78f71ada15b7b29960a991d2ca50136fc2919ee2c4",
+        "positions_px": "2ddc6dec890e930dd2873d99a093486cc29ebd93a8551f44aba0c27db0f5106d",
+        "probe_init": "1c3a0d13744e53e802cd78a4b0f7c4ad6d67e2b813f17b47c07d97269aa3f600",
+        "probe_truth": "bba26788f80c57bbff7e251bad58f802704889c6a5cd01f8f93b322cb5033921",
+        "roi_mask": "98f749cc322cebb2757dd33253c8b5c4ad0c0bfefe0998fe0b2240183983174d",
+        "top_left_px": "5c64c2425ae39738003380959d050b67f44e56d45262e4aabbf49302b48820bc",
+        "truth": "08091b823c76a9e2016652c280c3e8360ea5f2770894fb490aebaef7c53611f5"
+      }
+    },
+    "overlap_0.75_eta_0.4": {
+      "overlap": 0.75,
+      "eta": 0.4,
+      "arrays_sha256": {
+        "intensities": "c57bc84cab65f52cb7c4863163df40dc46accfb11d579e8523302e0e6864ae6f",
+        "noiseless_intensities": "741164a1048fa3e85859fdec074048d0562cb4af2651e1e21377c0cc0c68ffe6",
+        "object_init": "3822db8f1eee1e2c7752ba78f71ada15b7b29960a991d2ca50136fc2919ee2c4",
+        "positions_px": "2ddc6dec890e930dd2873d99a093486cc29ebd93a8551f44aba0c27db0f5106d",
+        "probe_init": "1c3a0d13744e53e802cd78a4b0f7c4ad6d67e2b813f17b47c07d97269aa3f600",
+        "probe_truth": "bba26788f80c57bbff7e251bad58f802704889c6a5cd01f8f93b322cb5033921",
+        "roi_mask": "98f749cc322cebb2757dd33253c8b5c4ad0c0bfefe0998fe0b2240183983174d",
+        "top_left_px": "5c64c2425ae39738003380959d050b67f44e56d45262e4aabbf49302b48820bc",
+        "truth": "08091b823c76a9e2016652c280c3e8360ea5f2770894fb490aebaef7c53611f5"
+      }
+    },
+    "overlap_0.875_eta_0.2": {
+      "overlap": 0.875,
+      "eta": 0.2,
+      "arrays_sha256": {
+        "intensities": "2510595521b9bb2c7abf62f848a669bf11b89842e89f83f6041df6bda3eae207",
+        "noiseless_intensities": "53944c6249ca0e7490f2f90b9ea26ecc48513a6e989ffb84b2601310d3a78077",
+        "object_init": "3822db8f1eee1e2c7752ba78f71ada15b7b29960a991d2ca50136fc2919ee2c4",
+        "positions_px": "d752144d079c0e7188451f03eafdd6ae2bd7533f31e60288dbfc8a344104b228",
+        "probe_init": "1c3a0d13744e53e802cd78a4b0f7c4ad6d67e2b813f17b47c07d97269aa3f600",
+        "probe_truth": "bba26788f80c57bbff7e251bad58f802704889c6a5cd01f8f93b322cb5033921",
+        "roi_mask": "98f749cc322cebb2757dd33253c8b5c4ad0c0bfefe0998fe0b2240183983174d",
+        "top_left_px": "700767db32dcfea71ed201deb4ca30fa20e6cecdc68f3517c4caa27359268879",
+        "truth": "08091b823c76a9e2016652c280c3e8360ea5f2770894fb490aebaef7c53611f5"
+      }
+    },
+    "overlap_0.875_eta_0.4": {
+      "overlap": 0.875,
+      "eta": 0.4,
+      "arrays_sha256": {
+        "intensities": "bb07c51de863cc1ff32da8afed7ff595924210d83073b5f3884c7996fe50419f",
+        "noiseless_intensities": "53944c6249ca0e7490f2f90b9ea26ecc48513a6e989ffb84b2601310d3a78077",
+        "object_init": "3822db8f1eee1e2c7752ba78f71ada15b7b29960a991d2ca50136fc2919ee2c4",
+        "positions_px": "d752144d079c0e7188451f03eafdd6ae2bd7533f31e60288dbfc8a344104b228",
+        "probe_init": "1c3a0d13744e53e802cd78a4b0f7c4ad6d67e2b813f17b47c07d97269aa3f600",
+        "probe_truth": "bba26788f80c57bbff7e251bad58f802704889c6a5cd01f8f93b322cb5033921",
+        "roi_mask": "98f749cc322cebb2757dd33253c8b5c4ad0c0bfefe0998fe0b2240183983174d",
+        "top_left_px": "700767db32dcfea71ed201deb4ca30fa20e6cecdc68f3517c4caa27359268879",
+        "truth": "08091b823c76a9e2016652c280c3e8360ea5f2770894fb490aebaef7c53611f5"
+      }
+    },
+    "overlap_0.9375_eta_0.2": {
+      "overlap": 0.9375,
+      "eta": 0.2,
+      "arrays_sha256": {
+        "intensities": "6730ad2ee6b395bb7ac375a9044c43fa2e7a3b26c4534a64b9df9703445422b6",
+        "noiseless_intensities": "4c10d55306deb5eadb1d3cf58fa9262c3f34997802d2583ebef06b391d68bd0d",
+        "object_init": "3822db8f1eee1e2c7752ba78f71ada15b7b29960a991d2ca50136fc2919ee2c4",
+        "positions_px": "e52c1917e91d6bfff8cfd8fd340aaffcaed46edf008aee2483ae3467ad3a5158",
+        "probe_init": "1c3a0d13744e53e802cd78a4b0f7c4ad6d67e2b813f17b47c07d97269aa3f600",
+        "probe_truth": "bba26788f80c57bbff7e251bad58f802704889c6a5cd01f8f93b322cb5033921",
+        "roi_mask": "98f749cc322cebb2757dd33253c8b5c4ad0c0bfefe0998fe0b2240183983174d",
+        "top_left_px": "1ba2cfcf0128fe38d5ebfdcf6ef5cbe8ca0616dea3d086ca432fef869c39e78c",
+        "truth": "08091b823c76a9e2016652c280c3e8360ea5f2770894fb490aebaef7c53611f5"
+      }
+    },
+    "overlap_0.9375_eta_0.4": {
+      "overlap": 0.9375,
+      "eta": 0.4,
+      "arrays_sha256": {
+        "intensities": "3d21eadecaf1609b46a0264a550f1b20e03b347304c91d5c79924e7a6fe5466e",
+        "noiseless_intensities": "4c10d55306deb5eadb1d3cf58fa9262c3f34997802d2583ebef06b391d68bd0d",
+        "object_init": "3822db8f1eee1e2c7752ba78f71ada15b7b29960a991d2ca50136fc2919ee2c4",
+        "positions_px": "e52c1917e91d6bfff8cfd8fd340aaffcaed46edf008aee2483ae3467ad3a5158",
+        "probe_init": "1c3a0d13744e53e802cd78a4b0f7c4ad6d67e2b813f17b47c07d97269aa3f600",
+        "probe_truth": "bba26788f80c57bbff7e251bad58f802704889c6a5cd01f8f93b322cb5033921",
+        "roi_mask": "98f749cc322cebb2757dd33253c8b5c4ad0c0bfefe0998fe0b2240183983174d",
+        "top_left_px": "1ba2cfcf0128fe38d5ebfdcf6ef5cbe8ca0616dea3d086ca432fef869c39e78c",
+        "truth": "08091b823c76a9e2016652c280c3e8360ea5f2770894fb490aebaef7c53611f5"
+      }
+    }
+  },
+  "real_reconstructions": {
+    "epochs": 100,
+    "description": "Rendered object and probe reconstructions only; raw experimental measurements are not included."
+  }
+}
